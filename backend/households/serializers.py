@@ -1,7 +1,8 @@
 from rest_framework import serializers
-
+from django.contrib.auth import get_user_model
 from households.models import Household, HouseholdMember
 
+User = get_user_model()
 
 class HouseholdMemberSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
@@ -37,3 +38,19 @@ class HouseholdSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['owner']
+
+class AddHouseholdMemberSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(
+        choices=HouseholdMember.Role.choices,
+        default=HouseholdMember.Role.MEMBER
+    )
+
+    def validate_email(self, value):
+        try:
+            self.user_to_add = User.objects.get(email=value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError(
+                'Không tìm thấy người dùng với email này.'
+            )
+        return value
