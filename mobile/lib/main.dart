@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'models/household.dart';
 import 'services/api_service.dart';
+import 'login_screen.dart';
+import 'app_theme.dart';
 
 void main() {
   runApp(const ChungViApp());
@@ -15,10 +17,8 @@ class ChungViApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Chung Ví',
-      theme: ThemeData(
-        primarySwatch: Colors.green,
-      ),
-      home: const HomeScreen(),
+      theme: AppTheme.lightTheme,
+      home: const LoginScreen(),
     );
   }
 }
