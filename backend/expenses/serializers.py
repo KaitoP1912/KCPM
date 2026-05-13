@@ -4,7 +4,6 @@ from rest_framework import serializers
 
 from accounts.models import User
 from expenses.models import Debt, Expense, ExpenseParticipant
-from households.models import Household
 
 
 class ExpenseParticipantInputSerializer(serializers.Serializer):
@@ -41,9 +40,7 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
             user = User.objects.get(id=item['user_id'])
             participant_users.append(user)
 
-        split_amount = Decimal(
-            expense.amount / len(participant_users)
-        )
+        split_amount = Decimal(expense.amount / len(participant_users))
 
         for user in participant_users:
             ExpenseParticipant.objects.create(
@@ -69,6 +66,10 @@ class ExpenseListSerializer(serializers.ModelSerializer):
         source='payer.full_name',
         read_only=True
     )
+    payer_email = serializers.EmailField(
+        source='payer.email',
+        read_only=True
+    )
 
     class Meta:
         model = Expense
@@ -77,6 +78,7 @@ class ExpenseListSerializer(serializers.ModelSerializer):
             'title',
             'amount',
             'payer_name',
+            'payer_email',
             'expense_date',
             'note',
         ]
@@ -87,9 +89,16 @@ class DebtSerializer(serializers.ModelSerializer):
         source='from_user.full_name',
         read_only=True
     )
-
+    from_user_email = serializers.EmailField(
+        source='from_user.email',
+        read_only=True
+    )
     to_user_name = serializers.CharField(
         source='to_user.full_name',
+        read_only=True
+    )
+    to_user_email = serializers.EmailField(
+        source='to_user.email',
         read_only=True
     )
 
@@ -98,7 +107,9 @@ class DebtSerializer(serializers.ModelSerializer):
         fields = [
             'id',
             'from_user_name',
+            'from_user_email',
             'to_user_name',
+            'to_user_email',
             'amount',
             'is_paid',
         ]
