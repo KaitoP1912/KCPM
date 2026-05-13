@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiService {
   static final Dio dio = Dio(
     BaseOptions(
-      baseUrl: "http://127.0.0.1:8000/api",
+      baseUrl: "http://192.168.0.5:8000/api",
       headers: {
         "Content-Type": "application/json",
       },
@@ -46,5 +46,18 @@ class ApiService {
     final response = await dio.get('/households/');
 
     return response.data;
+  }
+
+  static Future<void> createHousehold({
+    required String name,
+    required String description,
+  }) async {
+    await dio.post(
+      '/households/',
+      data: {
+        'name': name,
+        'description': description,
+      },
+    );
   }
 }
