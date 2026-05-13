@@ -9,4 +9,5 @@ urlpatterns = [
     path('api/health/', health_check),
     path('api/auth/', include('accounts.urls')),
     path('api/households/',include('households.urls')),
+    path('api/expenses/', include('expenses.urls')),
 ]
