@@ -5,7 +5,12 @@ from households.serializers import HouseholdSerializer
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from households.serializers import AddHouseholdMemberSerializer
+from households.models import Household, HouseholdMember, Activity
+from households.serializers import (
+    HouseholdSerializer,
+    AddHouseholdMemberSerializer,
+    ActivitySerializer,
+)
 
 
 class HouseholdListCreateView(generics.ListCreateAPIView):
@@ -24,6 +29,13 @@ class HouseholdListCreateView(generics.ListCreateAPIView):
             household=household,
             user=self.request.user,
             role=HouseholdMember.Role.OWNER
+        )
+
+        Activity.objects.create(
+            household=household,
+            actor=self.request.user,
+            activity_type=Activity.ActivityType.MEMBER_JOINED,
+            title=f'{self.request.user.email} đã tạo nhóm'
         )
 
 
@@ -85,6 +97,13 @@ class AddHouseholdMemberView(APIView):
             role=serializer.validated_data['role']
         )
 
+        Activity.objects.create(
+            household=household,
+            actor=request.user,
+            activity_type=Activity.ActivityType.MEMBER_JOINED,
+            title=f'{user_to_add.email} đã tham gia nhóm'
+        )
+
         return Response(
             {
                 'id': member.id,
@@ -94,3 +113,14 @@ class AddHouseholdMemberView(APIView):
             },
             status=status.HTTP_201_CREATED
         )
+    
+class ActivityListView(generics.ListAPIView):
+    serializer_class = ActivitySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        household_id = self.kwargs['household_id']
+
+        return Activity.objects.filter(
+            household_id=household_id
+        ).select_related('actor').order_by('-created_at')

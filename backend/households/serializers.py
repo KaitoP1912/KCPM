@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from households.models import Household, HouseholdMember
+from households.models import Household, HouseholdMember, Activity
 
 User = get_user_model()
 
@@ -54,3 +54,21 @@ class AddHouseholdMemberSerializer(serializers.Serializer):
                 'Không tìm thấy người dùng với email này.'
             )
         return value
+    
+class ActivitySerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Activity
+        fields = [
+            'id',
+            'activity_type',
+            'title',
+            'amount',
+            'metadata',
+            'actor_name',
+            'created_at',
+        ]
+
+    def get_actor_name(self, obj):
+        return obj.actor.full_name or obj.actor.email

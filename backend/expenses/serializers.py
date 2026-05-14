@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from accounts.models import User
 from expenses.models import Debt, Expense, ExpenseParticipant
+from households.models import Activity
 
 
 class ExpenseParticipantInputSerializer(serializers.Serializer):
@@ -33,6 +34,17 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
         participants_data = validated_data.pop('participants')
 
         expense = Expense.objects.create(**validated_data)
+
+        Activity.objects.create(
+            household=expense.household,
+            actor=expense.payer,
+            activity_type=Activity.ActivityType.EXPENSE_CREATED,
+            title=f'{expense.payer.email} đã thêm khoản chi "{expense.title}"',
+            amount=expense.amount,
+            metadata={
+                'expense_id': str(expense.id)
+            }
+        )
 
         participant_users = []
 
