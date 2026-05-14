@@ -13,6 +13,16 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _HouseholdDebtResult {
+  final String householdId;
+  final List<dynamic> debts;
+
+  _HouseholdDebtResult({
+    required this.householdId,
+    required this.debts,
+  });
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
 
@@ -59,31 +69,49 @@ class _HomeScreenState extends State<HomeScreen> {
           )
           .toList();
 
+      final debtResults = await Future.wait(
+        loadedHouseholds.map((household) async {
+          try {
+            final debts = await ApiService.getHouseholdDebts(household.id);
+
+            return _HouseholdDebtResult(
+              householdId: household.id,
+              debts: debts,
+            );
+          } catch (_) {
+            return _HouseholdDebtResult(
+              householdId: household.id,
+              debts: [],
+            );
+          }
+        }),
+      );
+
       double owe = 0;
       double receive = 0;
 
       groupOweMap.clear();
       groupReceiveMap.clear();
 
-      for (final household in loadedHouseholds) {
+      final me = currentEmail.toLowerCase();
+
+      for (final result in debtResults) {
         double groupOwe = 0;
         double groupReceive = 0;
 
-        final debts = await ApiService.getHouseholdDebts(household.id);
-
-        for (final item in debts) {
+        for (final item in result.debts) {
           final debt = Map<String, dynamic>.from(item);
 
-          final amount =
-              double.tryParse(debt['amount']?.toString() ?? '0') ?? 0;
+          final amount = double.tryParse(
+                debt['amount']?.toString() ?? '0',
+              ) ??
+              0;
 
           final fromEmail =
               debt['from_user_email']?.toString().toLowerCase() ?? '';
 
           final toEmail =
               debt['to_user_email']?.toString().toLowerCase() ?? '';
-
-          final me = currentEmail.toLowerCase();
 
           if (fromEmail == me) {
             owe += amount;
@@ -96,8 +124,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
 
-        groupOweMap[household.id] = groupOwe;
-        groupReceiveMap[household.id] = groupReceive;
+        groupOweMap[result.householdId] = groupOwe;
+        groupReceiveMap[result.householdId] = groupReceive;
       }
 
       if (!mounted) return;
@@ -163,24 +191,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget buildHeader() {
     return Row(
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              
-              Text(
-                'Chung Ví',
-                style: TextStyle(
-                  color: AppColors.textDark,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  height: 1.1,
-                  letterSpacing: -1,
-                ),
-              ),
-            ],
-          ),
-        ),
         Container(
           width: 58,
           height: 58,
@@ -195,7 +205,50 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: Padding(
             padding: const EdgeInsets.all(10),
-            child: Image.asset('assets/images/logo.png'),
+            child: Image.asset(
+              'assets/images/logo.png',
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Chung Ví',
+                style: TextStyle(
+                  color: AppColors.textDark,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.8,
+                  height: 1,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                'Quản lý chi tiêu nhóm',
+                style: TextStyle(
+                  color: AppColors.textLight,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius:
+                BorderRadius.circular(16),
+          ),
+          child: const Icon(
+            Icons.notifications_none_rounded,
+            color: AppColors.textDark,
           ),
         ),
       ],
@@ -203,6 +256,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget buildSummaryCard() {
+    final netBalance = totalReceive - totalOwe;
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -229,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            '${formatMoney(totalReceive - totalOwe)}đ',
+            '${formatMoney(netBalance)}đ',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 38,
