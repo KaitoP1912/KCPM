@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'bottom_nav_screen.dart';
 import 'services/api_service.dart';
-import 'main.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,27 +18,53 @@ class _LoginScreenState extends State<LoginScreen> {
   bool isLoading = false;
   bool hidePassword = true;
 
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> login() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      showMessage('Nhập email và mật khẩu');
+      return;
+    }
+
     try {
       setState(() => isLoading = true);
 
       final response = await ApiService.login(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
+        email: email,
+        password: password,
       );
 
-      await ApiService.setToken(response.data['access']);
+      final accessToken = response.data['access'];
+
+      if (accessToken == null || accessToken.toString().isEmpty) {
+        throw Exception('Token không hợp lệ');
+      }
+
+      await ApiService.setToken(
+        accessToken.toString(),
+        email: email,
+      );
 
       if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => const BottomNavScreen(),
+        ),
       );
-    } catch (_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Email hoặc mật khẩu không đúng")),
-      );
+    } catch (e) {
+      debugPrint('LOGIN ERROR: $e');
+
+      showMessage('Đăng nhập thất bại');
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -46,87 +72,157 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget buildLogo() {
+    return Column(
+      children: [
+        Container(
+          width: 86,
+          height: 86,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                blurRadius: 26,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(26),
+            child: Image.asset(
+              'assets/images/logo.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        const Text(
+          'Chung Ví',
+          style: TextStyle(
+            fontSize: 32,
+            fontWeight: FontWeight.w900,
+            color: AppColors.textDark,
+            letterSpacing: -0.8,
+            height: 1,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildInput({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    bool obscure = false,
+    Widget? suffixIcon,
+    TextInputType? keyboardType,
+    TextInputAction? textInputAction,
+    void Function(String)? onSubmitted,
+  }) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      onSubmitted: onSubmitted,
+      style: const TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textDark,
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        prefixIcon: Icon(
+          icon,
+          color: AppColors.textLight,
+          size: 21,
+        ),
+        suffixIcon: suffixIcon,
+      ),
+    );
+  }
+
+  Widget buildLoginButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 58,
+      child: ElevatedButton(
+        onPressed: isLoading ? null : login,
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : const Text(
+                'Đăng nhập',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                ),
+              ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 82,
-                    height: 82,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    child: const Icon(
-                      Icons.account_balance_wallet_rounded,
-                      size: 42,
-                      color: AppColors.primary,
-                    ),
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 20,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 410,
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  buildLogo(),
+                  const SizedBox(height: 42),
+                  buildInput(
+                    controller: emailController,
+                    hint: 'Email',
+                    icon: Icons.alternate_email_rounded,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
                   ),
-                ),
-
-                const SizedBox(height: 28),
-
-                const Center(
-                  child: Text(
-                    "Chung Ví",
-                    style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                const Center(
-                  child: Text(
-                    "Chia tiền nhóm dễ hơn, rõ ràng hơn",
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: AppColors.textLight,
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 36),
-
-                const Text(
-                  "Đăng nhập",
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    hintText: "Email",
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                TextField(
-                  controller: passwordController,
-                  obscureText: hidePassword,
-                  decoration: InputDecoration(
-                    hintText: "Mật khẩu",
-                    prefixIcon: const Icon(Icons.lock_outline),
+                  const SizedBox(height: 16),
+                  buildInput(
+                    controller: passwordController,
+                    hint: 'Mật khẩu',
+                    icon: Icons.lock_outline_rounded,
+                    obscure: hidePassword,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => login(),
                     suffixIcon: IconButton(
                       onPressed: () {
                         setState(() {
@@ -137,63 +233,54 @@ class _LoginScreenState extends State<LoginScreen> {
                         hidePassword
                             ? Icons.visibility_off_outlined
                             : Icons.visibility_outlined,
+                        color: AppColors.textLight,
                       ),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 12),
-
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {},
-                    child: const Text("Quên mật khẩu?"),
-                  ),
-                ),
-
-                const SizedBox(height: 18),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: isLoading ? null : login,
-                    child: isLoading
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            "Đăng nhập",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                  ),
-                ),
-
-                const SizedBox(height: 22),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "Chưa có tài khoản?",
-                      style: TextStyle(color: AppColors.textLight),
-                    ),
-                    TextButton(
+                  const SizedBox(height: 14),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
                       onPressed: () {},
-                      child: const Text("Đăng ký ngay"),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                      ),
+                      child: const Text(
+                        'Quên mật khẩu?',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  const SizedBox(height: 24),
+                  buildLoginButton(),
+                  const SizedBox(height: 22),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'Chưa có tài khoản?',
+                        style: TextStyle(
+                          color: AppColors.textLight,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {},
+                        child: const Text(
+                          'Đăng ký',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
