@@ -54,7 +54,6 @@ class ApiService {
     }
 
     dio.options.headers.remove("Authorization");
-
     return null;
   }
 
@@ -69,6 +68,26 @@ class ApiService {
 
   static bool isUnauthorized(Object error) {
     return error is DioException && error.response?.statusCode == 401;
+  }
+
+  static String getErrorMessage(Object error, String fallback) {
+    if (error is DioException) {
+      final data = error.response?.data;
+
+      if (data is Map && data["detail"] != null) {
+        return data["detail"].toString();
+      }
+
+      if (data is Map && data["email"] != null) {
+        return data["email"].toString();
+      }
+
+      if (data is Map && data["non_field_errors"] != null) {
+        return data["non_field_errors"].toString();
+      }
+    }
+
+    return fallback;
   }
 
   static Future<bool> checkAuth() async {
@@ -126,6 +145,29 @@ class ApiService {
         'description': description,
       },
     );
+  }
+
+  static Future<void> addMemberToHousehold({
+    required String householdId,
+    required String email,
+    String role = 'member',
+  }) async {
+    try {
+      await dio.post(
+        '/households/$householdId/members/add/',
+        data: {
+          'email': email,
+          'role': role,
+        },
+      );
+    } catch (e) {
+      throw Exception(
+        getErrorMessage(
+          e,
+          'Không thể thêm thành viên',
+        ),
+      );
+    }
   }
 
   static Future<List<dynamic>> getHouseholdExpenses(

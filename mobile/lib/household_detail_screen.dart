@@ -110,6 +110,88 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
     }
   }
 
+  Future<void> showAddMemberDialog() async {
+    final controller = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text(
+            'Thêm thành viên',
+          ),
+          content: TextField(
+            controller: controller,
+            keyboardType:
+                TextInputType.emailAddress,
+            decoration:
+                const InputDecoration(
+              hintText: 'Nhập email...',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final email =
+                    controller.text.trim();
+
+                if (email.isEmpty) {
+                  return;
+                }
+
+                try {
+                  await ApiService
+                      .addMemberToHousehold(
+                    householdId:
+                        widget.household.id,
+                    email: email,
+                  );
+
+                  if (!mounted) return;
+
+                  Navigator.pop(context);
+
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Đã thêm thành viên',
+                      ),
+                    ),
+                  );
+
+                  await loadData();
+                } catch (e) {
+                  if (!mounted) return;
+
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        e.toString(),
+                      ),
+                    ),
+                  );
+                }
+              },
+              child: const Text(
+                'Thêm',
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   String formatMoney(double amount) {
     return amount.toStringAsFixed(0).replaceAllMapped(
           RegExp(r'\B(?=(\d{3})+(?!\d))'),
@@ -592,6 +674,15 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
       appBar: AppBar(
         titleSpacing: 20,
         title: Text(widget.household.name),
+        actions: [
+          IconButton(
+            onPressed: showAddMemberDialog,
+            icon: const Icon(
+              Icons.person_add_alt_1_rounded,
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         elevation: 0,

@@ -22,50 +22,47 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
     });
   }
 
+  void changeTab(int index) {
+    setState(() {
+      currentIndex = index;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final screens = [
       HomeScreen(key: ValueKey(homeReloadKey)),
-      CreateHouseholdScreen(
-        popOnSuccess: false,
-        onCreated: goHomeAndReload,
-      ),
-      const _PlaceholderScreen(
-        icon: Icons.person_outline_rounded,
-        title: 'Cá nhân',
-      ),
+      const ActivityScreen(),
+      const AddExpenseEntryScreen(),
+      const DebtOverviewScreen(),
+      const ProfileScreen(),
     ];
 
     return Scaffold(
+      extendBody: true,
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 220),
         child: screens[currentIndex],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(
-            top: BorderSide(
-              color: AppColors.border.withValues(alpha: 0.7),
-            ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 86,
+          margin: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 24,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.only(
-          left: 10,
-          right: 10,
-          top: 10,
-          bottom: 18,
-        ),
-        child: SafeArea(
-          top: false,
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               buildNavItem(
                 index: 0,
@@ -74,13 +71,69 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
               ),
               buildNavItem(
                 index: 1,
-                icon: Icons.add_circle_rounded,
-                label: 'Tạo nhóm',
+                icon: Icons.receipt_long_rounded,
+                label: 'Hoạt động',
+              ),
+              buildCenterButton(),
+              buildNavItem(
+                index: 3,
+                icon: Icons.sync_alt_rounded,
+                label: 'Công nợ',
               ),
               buildNavItem(
-                index: 2,
+                index: 4,
                 icon: Icons.person_rounded,
                 label: 'Cá nhân',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildCenterButton() {
+    final isActive = currentIndex == 2;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => changeTab(2),
+        behavior: HitTestBehavior.opaque,
+        child: Transform.translate(
+          offset: const Offset(0, -18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                width: 58,
+                height: 58,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.32),
+                      blurRadius: 22,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.add_rounded,
+                  color: Colors.white,
+                  size: 34,
+                ),
+              ),
+              const SizedBox(height: 6),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                width: isActive ? 6 : 0,
+                height: isActive ? 6 : 0,
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
               ),
             ],
           ),
@@ -94,91 +147,176 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
     required IconData icon,
     required String label,
   }) {
-    final bool isActive = currentIndex == index;
+    final isActive = currentIndex == index;
 
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          setState(() {
-            currentIndex = index;
-          });
-        },
+        onTap: () => changeTab(index),
         behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          decoration: BoxDecoration(
-            color: isActive
-                ? AppColors.primary.withValues(alpha: 0.10)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: isActive ? AppColors.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  icon,
-                  size: 24,
-                  color: isActive ? Colors.white : AppColors.textLight,
-                ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? AppColors.primary.withValues(alpha: 0.10)
+                    : Colors.transparent,
+                borderRadius: BorderRadius.circular(16),
               ),
-              const SizedBox(height: 6),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 220),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                  color: isActive ? AppColors.primary : AppColors.textLight,
-                  letterSpacing: -0.1,
-                ),
-                child: Text(label),
+              child: Icon(
+                icon,
+                size: 23,
+                color: isActive ? AppColors.primary : AppColors.textLight,
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 5),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 220),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
+                color: isActive ? AppColors.primary : AppColors.textLight,
+                letterSpacing: -0.1,
+              ),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 4),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              width: isActive ? 5 : 0,
+              height: isActive ? 5 : 0,
+              decoration: const BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _PlaceholderScreen extends StatelessWidget {
-  final IconData icon;
-  final String title;
+class ActivityScreen extends StatelessWidget {
+  const ActivityScreen({super.key});
 
-  const _PlaceholderScreen({
-    required this.icon,
+  @override
+  Widget build(BuildContext context) {
+    return const _SimpleFeatureScreen(
+      title: 'Hoạt động',
+      icon: Icons.receipt_long_rounded,
+      description: 'Timeline giao dịch và lịch sử sẽ được hiển thị tại đây.',
+    );
+  }
+}
+
+class AddExpenseEntryScreen extends StatelessWidget {
+  const AddExpenseEntryScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _SimpleFeatureScreen(
+      title: 'Thêm chi tiêu',
+      icon: Icons.add_rounded,
+      description: 'Chọn một nhóm ở Trang chủ để thêm khoản chi vào nhóm đó.',
+    );
+  }
+}
+
+class DebtOverviewScreen extends StatelessWidget {
+  const DebtOverviewScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _SimpleFeatureScreen(
+      title: 'Công nợ',
+      icon: Icons.sync_alt_rounded,
+      description: 'Tổng quan ai nợ ai sẽ được gom tại màn hình này.',
+    );
+  }
+}
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _SimpleFeatureScreen(
+      title: 'Cá nhân',
+      icon: Icons.person_rounded,
+      description: 'Hồ sơ, đăng xuất và cài đặt tài khoản.',
+    );
+  }
+}
+
+class _SimpleFeatureScreen extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final String description;
+
+  const _SimpleFeatureScreen({
     required this.title,
+    required this.icon,
+    required this.description,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        titleSpacing: 20,
+        title: Text(title),
+      ),
       body: Center(
         child: Container(
-          padding: const EdgeInsets.all(28),
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(30),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(30),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 54, color: AppColors.primary),
-              const SizedBox(height: 16),
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Icon(
+                  icon,
+                  color: AppColors.primary,
+                  size: 34,
+                ),
+              ),
+              const SizedBox(height: 20),
               Text(
-                '$title đang phát triển',
+                title,
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
                   color: AppColors.textDark,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                description,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.textLight,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  height: 1.45,
                 ),
               ),
             ],
