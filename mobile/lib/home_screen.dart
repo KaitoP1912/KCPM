@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'add_expense_screen.dart';
 import 'app_theme.dart';
 import 'create_household_screen.dart';
 import 'household_detail_screen.dart';
@@ -11,30 +10,30 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() =>
-      _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState
-    extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
 
   List<Household> households = [];
-  List<Household> filteredHouseholds =
-      [];
+  List<Household> filteredHouseholds = [];
 
-  final searchController =
-      TextEditingController();
+  final searchController = TextEditingController();
+
+  String currentEmail = '';
+
+  double totalOwe = 0;
+  double totalReceive = 0;
+
+  final Map<String, double> groupOweMap = {};
+  final Map<String, double> groupReceiveMap = {};
 
   @override
   void initState() {
     super.initState();
-
-    loadHouseholds();
-
-    searchController.addListener(
-      filterHouseholds,
-    );
+    searchController.addListener(filterHouseholds);
+    loadData();
   }
 
   @override
@@ -43,31 +42,71 @@ class _HomeScreenState
     super.dispose();
   }
 
-  Future<void> loadHouseholds() async {
+  Future<void> loadData() async {
     try {
-      setState(() {
-        isLoading = true;
-      });
+      setState(() => isLoading = true);
 
-      final data =
-          await ApiService.getHouseholds();
+      final savedEmail = await ApiService.getSavedEmail();
+      currentEmail = savedEmail ?? '';
 
-      final loadedHouseholds = data
+      final householdData = await ApiService.getHouseholds();
+
+      final loadedHouseholds = householdData
           .map<Household>(
             (json) => Household.fromJson(
-              Map<String, dynamic>.from(
-                json,
-              ),
+              Map<String, dynamic>.from(json),
             ),
           )
           .toList();
+
+      double owe = 0;
+      double receive = 0;
+
+      groupOweMap.clear();
+      groupReceiveMap.clear();
+
+      for (final household in loadedHouseholds) {
+        double groupOwe = 0;
+        double groupReceive = 0;
+
+        final debts = await ApiService.getHouseholdDebts(household.id);
+
+        for (final item in debts) {
+          final debt = Map<String, dynamic>.from(item);
+
+          final amount =
+              double.tryParse(debt['amount']?.toString() ?? '0') ?? 0;
+
+          final fromEmail =
+              debt['from_user_email']?.toString().toLowerCase() ?? '';
+
+          final toEmail =
+              debt['to_user_email']?.toString().toLowerCase() ?? '';
+
+          final me = currentEmail.toLowerCase();
+
+          if (fromEmail == me) {
+            owe += amount;
+            groupOwe += amount;
+          }
+
+          if (toEmail == me) {
+            receive += amount;
+            groupReceive += amount;
+          }
+        }
+
+        groupOweMap[household.id] = groupOwe;
+        groupReceiveMap[household.id] = groupReceive;
+      }
 
       if (!mounted) return;
 
       setState(() {
         households = loadedHouseholds;
-        filteredHouseholds =
-            loadedHouseholds;
+        filteredHouseholds = loadedHouseholds;
+        totalOwe = owe;
+        totalReceive = receive;
         isLoading = false;
       });
     } catch (e) {
@@ -75,85 +114,50 @@ class _HomeScreenState
 
       if (!mounted) return;
 
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Không thể tải nhóm',
-          ),
+          content: Text('Không thể tải dữ liệu trang chủ'),
         ),
       );
     }
   }
 
   void filterHouseholds() {
-    final keyword =
-        searchController.text
-            .trim()
-            .toLowerCase();
+    final keyword = searchController.text.trim().toLowerCase();
 
     if (keyword.isEmpty) {
       setState(() {
-        filteredHouseholds =
-            households;
+        filteredHouseholds = households;
       });
-
       return;
     }
 
     setState(() {
-      filteredHouseholds =
-          households.where((household) {
-        return household.name
-                .toLowerCase()
-                .contains(keyword) ||
-            household.description
-                .toLowerCase()
-                .contains(keyword);
+      filteredHouseholds = households.where((household) {
+        return household.name.toLowerCase().contains(keyword) ||
+            household.description.toLowerCase().contains(keyword);
       }).toList();
     });
   }
 
-  String getGreeting() {
-    final hour =
-        DateTime.now().hour;
-
-    if (hour < 12) {
-      return 'Chào buổi sáng ☀️';
-    }
-
-    if (hour < 18) {
-      return 'Chào buổi chiều 👋';
-    }
-
-    return 'Chào buổi tối 🌙';
-  }
-
   String formatMoney(double amount) {
-    return amount
-        .toStringAsFixed(0)
-        .replaceAllMapped(
-          RegExp(
-            r'\B(?=(\d{3})+(?!\d))',
-          ),
+    return amount.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'\B(?=(\d{3})+(?!\d))'),
           (match) => '.',
         );
   }
 
-  int getTotalMembers() {
-    int total = 0;
+  Future<void> openCreateHousehold() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CreateHouseholdScreen(),
+      ),
+    );
 
-    for (final household
-        in households) {
-      total +=
-          household.members.length;
-    }
-
-    return total;
+    await loadData();
   }
 
   Widget buildHeader() {
@@ -161,45 +165,28 @@ class _HomeScreenState
       children: [
         Expanded(
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
-            children: [
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              
               Text(
-                getGreeting(),
-                style: const TextStyle(
-                  color:
-                      AppColors.textLight,
-                  fontWeight:
-                      FontWeight.w700,
-                  fontSize: 15,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Quản lý chi tiêu nhóm\ndễ dàng hơn',
+                'Chung Ví',
                 style: TextStyle(
+                  color: AppColors.textDark,
                   fontSize: 30,
-                  fontWeight:
-                      FontWeight.w900,
+                  fontWeight: FontWeight.w900,
                   height: 1.1,
                   letterSpacing: -1,
-                  color:
-                      AppColors.textDark,
                 ),
               ),
             ],
           ),
         ),
         Container(
-          width: 60,
-          height: 60,
+          width: 58,
+          height: 58,
           decoration: BoxDecoration(
-            borderRadius:
-                BorderRadius.circular(
-              20,
-            ),
-            gradient:
-                const LinearGradient(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
               colors: [
                 AppColors.primary,
                 AppColors.secondary,
@@ -207,21 +194,17 @@ class _HomeScreenState
             ),
           ),
           child: Padding(
-            padding:
-                const EdgeInsets.all(10),
-            child: Image.asset(
-              'assets/images/logo.png',
-            ),
+            padding: const EdgeInsets.all(10),
+            child: Image.asset('assets/images/logo.png'),
           ),
         ),
       ],
     );
   }
 
-  Widget buildAnalyticsCard() {
+  Widget buildSummaryCard() {
     return Container(
-      padding:
-          const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
@@ -231,120 +214,42 @@ class _HomeScreenState
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius:
-            BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(32),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: Colors.white
-                      .withValues(
-                    alpha: 0.16,
-                  ),
-                  borderRadius:
-                      BorderRadius
-                          .circular(
-                    18,
-                  ),
-                ),
-                child: const Icon(
-                  Icons.account_balance_wallet_rounded,
-                  color:
-                      Colors.white,
-                  size: 28,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets
-                        .symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration:
-                    BoxDecoration(
-                  color: Colors.white
-                      .withValues(
-                    alpha: 0.14,
-                  ),
-                  borderRadius:
-                      BorderRadius
-                          .circular(
-                    16,
-                  ),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.trending_up_rounded,
-                      color:
-                          Colors.white,
-                      size: 18,
-                    ),
-                    SizedBox(
-                        width: 8),
-                    Text(
-                      'Đang hoạt động',
-                      style:
-                          TextStyle(
-                        color: Colors
-                            .white,
-                        fontWeight:
-                            FontWeight
-                                .w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 30),
           const Text(
-            'Tổng số nhóm',
+            'Tổng công nợ',
             style: TextStyle(
               color: Colors.white70,
-              fontWeight:
-                  FontWeight.w600,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 10),
           Text(
-            '${households.length}',
+            '${formatMoney(totalReceive - totalOwe)}đ',
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 42,
-              fontWeight:
-                  FontWeight.w900,
+              fontSize: 38,
+              fontWeight: FontWeight.w900,
               letterSpacing: -1,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 26),
           Row(
             children: [
-              buildMiniStat(
-                icon:
-                    Icons.groups_rounded,
-                value:
-                    '${getTotalMembers()}',
-                label:
-                    'Thành viên',
+              buildMoneyBox(
+                title: 'Bạn đang nợ',
+                amount: totalOwe,
+                icon: Icons.arrow_upward_rounded,
               ),
               const SizedBox(width: 12),
-              buildMiniStat(
-                icon:
-                    Icons.receipt_long_rounded,
-                value:
-                    '${households.length}',
-                label: 'Nhóm',
+              buildMoneyBox(
+                title: 'Bạn sẽ nhận',
+                amount: totalReceive,
+                icon: Icons.arrow_downward_rounded,
               ),
             ],
           ),
@@ -353,30 +258,20 @@ class _HomeScreenState
     );
   }
 
-  Widget buildMiniStat({
+  Widget buildMoneyBox({
+    required String title,
+    required double amount,
     required IconData icon,
-    required String value,
-    required String label,
   }) {
     return Expanded(
       child: Container(
-        padding:
-            const EdgeInsets.all(
-          16,
-        ),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white
-              .withValues(
-            alpha: 0.12,
-          ),
-          borderRadius:
-              BorderRadius.circular(
-            20,
-          ),
+          color: Colors.white.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(
               icon,
@@ -385,24 +280,20 @@ class _HomeScreenState
             ),
             const SizedBox(height: 14),
             Text(
-              value,
-              style:
-                  const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight:
-                    FontWeight.w900,
+              title,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
-              label,
-              style:
-                  const TextStyle(
-                color:
-                    Colors.white70,
-                fontWeight:
-                    FontWeight.w600,
+              '${formatMoney(amount)}đ',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.3,
               ),
             ),
           ],
@@ -419,259 +310,161 @@ class _HomeScreenState
       ),
       decoration: InputDecoration(
         hintText: 'Tìm nhóm...',
-        prefixIcon: const Icon(
-          Icons.search_rounded,
-        ),
-        suffixIcon:
-            searchController
-                    .text
-                    .isNotEmpty
-                ? IconButton(
-                    onPressed: () {
-                      searchController
-                          .clear();
-                    },
-                    icon: const Icon(
-                      Icons.close_rounded,
-                    ),
-                  )
-                : null,
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: searchController.text.isNotEmpty
+            ? IconButton(
+                onPressed: () => searchController.clear(),
+                icon: const Icon(Icons.close_rounded),
+              )
+            : null,
       ),
     );
   }
 
-  Widget buildSectionTitle(
-    String title,
-  ) {
+  Widget buildSectionTitle() {
     return Row(
       children: [
-        Text(
-          title,
-          style: const TextStyle(
+        const Text(
+          'Danh sách nhóm',
+          style: TextStyle(
+            color: AppColors.textDark,
             fontSize: 22,
-            fontWeight:
-                FontWeight.w900,
+            fontWeight: FontWeight.w900,
             letterSpacing: -0.5,
-            color:
-                AppColors.textDark,
           ),
         ),
         const Spacer(),
         Text(
           '${filteredHouseholds.length}',
           style: const TextStyle(
-            color:
-                AppColors.textLight,
-            fontWeight:
-                FontWeight.w700,
+            color: AppColors.textLight,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ],
     );
   }
 
-  Widget buildHouseholdCard(
-    Household household,
-  ) {
+  Widget buildHouseholdCard(Household household) {
+    final groupOwe = groupOweMap[household.id] ?? 0;
+    final groupReceive = groupReceiveMap[household.id] ?? 0;
+
+    String statusText = 'Không có công nợ';
+    Color statusColor = AppColors.success;
+    IconData statusIcon = Icons.check_circle_rounded;
+
+    if (groupOwe > 0) {
+      statusText = 'Bạn đang nợ: ${formatMoney(groupOwe)}đ';
+      statusColor = AppColors.danger;
+      statusIcon = Icons.arrow_upward_rounded;
+    } else if (groupReceive > 0) {
+      statusText = 'Bạn sẽ nhận: ${formatMoney(groupReceive)}đ';
+      statusColor = AppColors.success;
+      statusIcon = Icons.arrow_downward_rounded;
+    }
+
     return GestureDetector(
       onTap: () async {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) =>
-                HouseholdDetailScreen(
+            builder: (_) => HouseholdDetailScreen(
               household: household,
             ),
           ),
         );
 
-        await loadHouseholds();
+        await loadData();
       },
       child: Container(
-        margin:
-            const EdgeInsets.only(
-          bottom: 18,
-        ),
-        padding:
-            const EdgeInsets.all(
-          20,
-        ),
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius:
-              BorderRadius.circular(
-            28,
-          ),
+          borderRadius: BorderRadius.circular(26),
           boxShadow: [
             BoxShadow(
-              color: Colors.black
-                  .withValues(
-                alpha: 0.03,
-              ),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 20,
-              offset:
-                  const Offset(
-                0,
-                10,
-              ),
+              offset: const Offset(0, 10),
             ),
           ],
         ),
-        child: Column(
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 58,
-                  height: 58,
-                  decoration:
-                      BoxDecoration(
-                    gradient:
-                        const LinearGradient(
-                      colors: [
-                        AppColors
-                            .primary,
-                        AppColors
-                            .secondary,
-                      ],
-                    ),
-                    borderRadius:
-                        BorderRadius
-                            .circular(
-                      20,
-                    ),
-                  ),
-                  child: const Icon(
-                    Icons
-                        .groups_rounded,
-                    color:
-                        Colors.white,
-                    size: 28,
-                  ),
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    AppColors.primary,
+                    AppColors.secondary,
+                  ],
                 ),
-                const SizedBox(
-                    width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.home_rounded,
+                color: Colors.white,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    household.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${household.members.length} thành viên',
+                    style: const TextStyle(
+                      color: AppColors.textLight,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
                     children: [
-                      Text(
-                        household.name,
-                        style:
-                            const TextStyle(
-                          fontSize:
-                              18,
-                          fontWeight:
-                              FontWeight
-                                  .w900,
-                          color:
-                              AppColors
-                                  .textDark,
-                          letterSpacing:
-                              -0.4,
-                        ),
+                      Icon(
+                        statusIcon,
+                        color: statusColor,
+                        size: 18,
                       ),
-                      const SizedBox(
-                          height: 6),
-                      Text(
-                        household
-                                .description
-                                .isEmpty
-                            ? 'Nhóm chia tiền'
-                            : household
-                                .description,
-                        maxLines: 1,
-                        overflow:
-                            TextOverflow
-                                .ellipsis,
-                        style:
-                            const TextStyle(
-                          color:
-                              AppColors
-                                  .textLight,
-                          fontWeight:
-                              FontWeight
-                                  .w600,
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          statusText,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ),
-                const Icon(
-                  Icons
-                      .arrow_forward_ios_rounded,
-                  size: 18,
-                  color:
-                      AppColors.textLight,
-                ),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 22),
-            Row(
-              children: [
-                buildInfoChip(
-                  icon:
-                      Icons.people_alt_rounded,
-                  label:
-                      '${household.members.length} thành viên',
-                ),
-                const SizedBox(
-                    width: 10),
-                buildInfoChip(
-                  icon:
-                      Icons.schedule_rounded,
-                  label:
-                      'Đang hoạt động',
-                ),
-              ],
+            const SizedBox(width: 12),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textLight,
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget buildInfoChip({
-    required IconData icon,
-    required String label,
-  }) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        color: AppColors
-            .primary
-            .withValues(
-          alpha: 0.08,
-        ),
-        borderRadius:
-            BorderRadius.circular(
-          16,
-        ),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 18,
-            color: AppColors.primary,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color:
-                  AppColors.primary,
-              fontWeight:
-                  FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -679,14 +472,10 @@ class _HomeScreenState
   Widget buildEmptyState() {
     return Container(
       width: double.infinity,
-      padding:
-          const EdgeInsets.all(34),
+      padding: const EdgeInsets.all(34),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(
-          32,
-        ),
+        borderRadius: BorderRadius.circular(32),
       ),
       child: Column(
         children: [
@@ -694,21 +483,16 @@ class _HomeScreenState
             width: 84,
             height: 84,
             decoration: BoxDecoration(
-              gradient:
-                  const LinearGradient(
+              gradient: const LinearGradient(
                 colors: [
                   AppColors.primary,
                   AppColors.secondary,
                 ],
               ),
-              borderRadius:
-                  BorderRadius.circular(
-                28,
-              ),
+              borderRadius: BorderRadius.circular(28),
             ),
             child: const Icon(
-              Icons
-                  .groups_rounded,
+              Icons.groups_rounded,
               color: Colors.white,
               size: 42,
             ),
@@ -717,76 +501,39 @@ class _HomeScreenState
           const Text(
             'Chưa có nhóm nào',
             style: TextStyle(
+              color: AppColors.textDark,
               fontSize: 22,
-              fontWeight:
-                  FontWeight.w900,
-              color:
-                  AppColors.textDark,
+              fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 12),
           const Text(
-            'Tạo nhóm đầu tiên để bắt đầu chia chi tiêu cùng bạn bè',
-            textAlign:
-                TextAlign.center,
+            'Tạo nhóm đầu tiên để bắt đầu chia tiền cùng mọi người.',
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color:
-                  AppColors.textLight,
-              fontWeight:
-                  FontWeight.w600,
+              color: AppColors.textLight,
+              fontWeight: FontWeight.w600,
               height: 1.5,
             ),
           ),
           const SizedBox(height: 28),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        const CreateHouseholdScreen(),
-                  ),
-                );
-
-                await loadHouseholds();
-              },
-              child: const Text(
-                'Tạo nhóm ngay',
-              ),
-            ),
+          ElevatedButton(
+            onPressed: openCreateHousehold,
+            child: const Text('Tạo nhóm ngay'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> openCreateHousehold() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) =>
-            const CreateHouseholdScreen(),
-      ),
-    );
-
-    await loadHouseholds();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          AppColors.background,
-      floatingActionButton:
-          FloatingActionButton(
+      backgroundColor: AppColors.background,
+      floatingActionButton: FloatingActionButton(
         elevation: 0,
-        backgroundColor:
-            AppColors.primary,
-        onPressed:
-            openCreateHousehold,
+        backgroundColor: AppColors.primary,
+        onPressed: openCreateHousehold,
         child: const Icon(
           Icons.add_rounded,
           color: Colors.white,
@@ -796,42 +543,26 @@ class _HomeScreenState
       body: SafeArea(
         child: isLoading
             ? const Center(
-                child:
-                    CircularProgressIndicator(),
+                child: CircularProgressIndicator(),
               )
             : RefreshIndicator(
-                onRefresh:
-                    loadHouseholds,
+                onRefresh: loadData,
                 child: ListView(
-                  padding:
-                      const EdgeInsets.all(
-                    20,
-                  ),
+                  padding: const EdgeInsets.all(20),
                   children: [
                     buildHeader(),
-                    const SizedBox(
-                        height: 28),
-                    buildAnalyticsCard(),
-                    const SizedBox(
-                        height: 26),
+                    const SizedBox(height: 26),
+                    buildSummaryCard(),
+                    const SizedBox(height: 24),
                     buildSearchBar(),
-                    const SizedBox(
-                        height: 30),
-                    buildSectionTitle(
-                      'Nhóm của bạn',
-                    ),
-                    const SizedBox(
-                        height: 18),
-                    if (filteredHouseholds
-                        .isEmpty)
+                    const SizedBox(height: 28),
+                    buildSectionTitle(),
+                    const SizedBox(height: 16),
+                    if (filteredHouseholds.isEmpty)
                       buildEmptyState()
                     else
-                      ...filteredHouseholds
-                          .map(
-                        buildHouseholdCard,
-                      ),
-                    const SizedBox(
-                        height: 120),
+                      ...filteredHouseholds.map(buildHouseholdCard),
+                    const SizedBox(height: 120),
                   ],
                 ),
               ),

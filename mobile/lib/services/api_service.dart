@@ -14,86 +14,205 @@ class ApiService {
   static final Dio dio = Dio(
     BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 8),
-      sendTimeout: const Duration(seconds: 8),
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+      sendTimeout: const Duration(seconds: 10),
       headers: {
         "Content-Type": "application/json",
       },
     ),
   );
 
-  static Future<void> setToken(
-    String token, {
+  static bool _isRefreshing = false;
+
+  static Future<void> init() async {
+    await loadToken();
+
+    dio.interceptors.clear();
+
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onError: (error, handler) async {
+          final statusCode =
+              error.response?.statusCode;
+
+          final requestOptions =
+              error.requestOptions;
+
+          final isRefreshApi =
+              requestOptions.path.contains(
+            '/auth/refresh/',
+          );
+
+          if (statusCode == 401 &&
+              !isRefreshApi) {
+            if (_isRefreshing) {
+              return handler.next(error);
+            }
+
+            _isRefreshing = true;
+
+            final refreshed =
+                await refreshAccessToken();
+
+            _isRefreshing = false;
+
+            if (refreshed) {
+              try {
+                final token =
+                    await getAccessToken();
+
+                requestOptions.headers[
+                        'Authorization'] =
+                    'Bearer $token';
+
+                final clonedResponse =
+                    await dio.fetch(
+                  requestOptions,
+                );
+
+                return handler.resolve(
+                  clonedResponse,
+                );
+              } catch (_) {}
+            } else {
+              await logout();
+            }
+          }
+
+          return handler.next(error);
+        },
+      ),
+    );
+  }
+
+  static Future<void> saveTokens({
+    required String access,
+    required String refresh,
     String? email,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs =
+        await SharedPreferences.getInstance();
 
-    await prefs.setString("access_token", token);
+    await prefs.setString(
+      'access_token',
+      access,
+    );
 
-    if (email != null && email.isNotEmpty) {
-      await prefs.setString("user_email", email);
+    await prefs.setString(
+      'refresh_token',
+      refresh,
+    );
+
+    if (email != null) {
+      await prefs.setString(
+        'user_email',
+        email,
+      );
     }
 
-    dio.options.headers["Authorization"] = "Bearer $token";
+    dio.options.headers[
+            'Authorization'] =
+        'Bearer $access';
   }
 
-  static Future<String?> getSavedEmail() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString("user_email");
+  static Future<String?> getAccessToken()
+  async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    return prefs.getString(
+      'access_token',
+    );
   }
 
-  static Future<String?> loadToken() async {
-    final prefs = await SharedPreferences.getInstance();
+  static Future<String?> getRefreshToken()
+  async {
+    final prefs =
+        await SharedPreferences.getInstance();
 
-    final token = prefs.getString("access_token");
+    return prefs.getString(
+      'refresh_token',
+    );
+  }
 
-    if (token != null && token.isNotEmpty) {
-      dio.options.headers["Authorization"] = "Bearer $token";
-      return token;
+  static Future<String?> getSavedEmail()
+  async {
+    final prefs =
+        await SharedPreferences.getInstance();
+
+    return prefs.getString(
+      'user_email',
+    );
+  }
+
+  static Future<void> loadToken() async {
+    final access =
+        await getAccessToken();
+
+    if (access != null &&
+        access.isNotEmpty) {
+      dio.options.headers[
+              'Authorization'] =
+          'Bearer $access';
     }
+  }
 
-    dio.options.headers.remove("Authorization");
-    return null;
+  static Future<bool>
+      refreshAccessToken() async {
+    try {
+      final refresh =
+          await getRefreshToken();
+
+      if (refresh == null ||
+          refresh.isEmpty) {
+        return false;
+      }
+
+      final response = await Dio().post(
+        '$baseUrl/auth/refresh/',
+        data: {
+          'refresh': refresh,
+        },
+      );
+
+      final newAccess =
+          response.data['access'];
+
+      final prefs =
+          await SharedPreferences.getInstance();
+
+      await prefs.setString(
+        'access_token',
+        newAccess,
+      );
+
+      dio.options.headers[
+              'Authorization'] =
+          'Bearer $newAccess';
+
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs =
+        await SharedPreferences.getInstance();
 
-    await prefs.remove("access_token");
-    await prefs.remove("user_email");
+    await prefs.clear();
 
-    dio.options.headers.remove("Authorization");
-  }
-
-  static bool isUnauthorized(Object error) {
-    return error is DioException && error.response?.statusCode == 401;
-  }
-
-  static String getErrorMessage(Object error, String fallback) {
-    if (error is DioException) {
-      final data = error.response?.data;
-
-      if (data is Map && data["detail"] != null) {
-        return data["detail"].toString();
-      }
-
-      if (data is Map && data["email"] != null) {
-        return data["email"].toString();
-      }
-
-      if (data is Map && data["non_field_errors"] != null) {
-        return data["non_field_errors"].toString();
-      }
-    }
-
-    return fallback;
+    dio.options.headers
+        .remove('Authorization');
   }
 
   static Future<bool> checkAuth() async {
-    final token = await loadToken();
+    final access =
+        await getAccessToken();
 
-    if (token == null || token.isEmpty) {
+    if (access == null ||
+        access.isEmpty) {
       return false;
     }
 
@@ -101,10 +220,17 @@ class ApiService {
       await dio.get('/households/');
       return true;
     } catch (e) {
-      if (isUnauthorized(e)) {
-        await logout();
+      final refreshed =
+          await refreshAccessToken();
+
+      if (refreshed) {
+        try {
+          await dio.get('/households/');
+          return true;
+        } catch (_) {}
       }
 
+      await logout();
       return false;
     }
   }
@@ -122,16 +248,25 @@ class ApiService {
     );
   }
 
-  static Future<List<dynamic>> getHouseholds() async {
-    final response = await dio.get('/households/');
+  static Future<List<dynamic>>
+      getHouseholds() async {
+    final response =
+        await dio.get('/households/');
+
     return response.data;
   }
 
-  static Future<Map<String, dynamic>> getHouseholdDetail(
+  static Future<Map<String, dynamic>>
+      getHouseholdDetail(
     String householdId,
   ) async {
-    final response = await dio.get('/households/$householdId/');
-    return Map<String, dynamic>.from(response.data);
+    final response = await dio.get(
+      '/households/$householdId/',
+    );
+
+    return Map<String, dynamic>.from(
+      response.data,
+    );
   }
 
   static Future<void> createHousehold({
@@ -147,30 +282,23 @@ class ApiService {
     );
   }
 
-  static Future<void> addMemberToHousehold({
+  static Future<void>
+      addMemberToHousehold({
     required String householdId,
     required String email,
     String role = 'member',
   }) async {
-    try {
-      await dio.post(
-        '/households/$householdId/members/add/',
-        data: {
-          'email': email,
-          'role': role,
-        },
-      );
-    } catch (e) {
-      throw Exception(
-        getErrorMessage(
-          e,
-          'Không thể thêm thành viên',
-        ),
-      );
-    }
+    await dio.post(
+      '/households/$householdId/members/add/',
+      data: {
+        'email': email,
+        'role': role,
+      },
+    );
   }
 
-  static Future<List<dynamic>> getHouseholdExpenses(
+  static Future<List<dynamic>>
+      getHouseholdExpenses(
     String householdId,
   ) async {
     final response = await dio.get(
@@ -180,7 +308,8 @@ class ApiService {
     return response.data;
   }
 
-  static Future<List<dynamic>> getHouseholdDebts(
+  static Future<List<dynamic>>
+      getHouseholdDebts(
     String householdId,
   ) async {
     final response = await dio.get(
@@ -188,6 +317,27 @@ class ApiService {
     );
 
     return response.data;
+  }
+
+  static Future<List<dynamic>>
+      getAllDebtsFromHouseholds(
+    List<String> householdIds,
+  ) async {
+    List<dynamic> allDebts = [];
+
+    for (final id in householdIds) {
+      try {
+        final response = await dio.get(
+          '/expenses/household/$id/debts/',
+        );
+
+        if (response.data is List) {
+          allDebts.addAll(response.data);
+        }
+      } catch (_) {}
+    }
+
+    return allDebts;
   }
 
   static Future<void> createExpense({

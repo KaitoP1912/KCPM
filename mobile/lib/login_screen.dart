@@ -42,14 +42,16 @@ class _LoginScreenState extends State<LoginScreen> {
         password: password,
       );
 
-      final accessToken = response.data['access'];
+      final access = response.data['access'];
+      final refresh = response.data['refresh'];
 
-      if (accessToken == null || accessToken.toString().isEmpty) {
+      if (access == null || refresh == null) {
         throw Exception('Token không hợp lệ');
       }
 
-      await ApiService.setToken(
-        accessToken.toString(),
+      await ApiService.saveTokens(
+        access: access.toString(),
+        refresh: refresh.toString(),
         email: email,
       );
 
@@ -63,7 +65,6 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       debugPrint('LOGIN ERROR: $e');
-
       showMessage('Đăng nhập thất bại');
     } finally {
       if (mounted) {
@@ -159,14 +160,6 @@ class _LoginScreenState extends State<LoginScreen> {
       height: 58,
       child: ElevatedButton(
         onPressed: isLoading ? null : login,
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-        ),
         child: isLoading
             ? const SizedBox(
                 width: 22,
@@ -185,6 +178,32 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
       ),
+    );
+  }
+
+  Widget buildRegisterHint() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text(
+          'Chưa có tài khoản?',
+          style: TextStyle(
+            color: AppColors.textLight,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        TextButton(
+          onPressed: () {
+            showMessage('Tính năng đăng ký sẽ làm sau');
+          },
+          child: const Text(
+            'Đăng ký',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -241,7 +260,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        showMessage('Tính năng quên mật khẩu sẽ làm sau');
+                      },
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
                         minimumSize: Size.zero,
@@ -258,27 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 24),
                   buildLoginButton(),
                   const SizedBox(height: 22),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text(
-                        'Chưa có tài khoản?',
-                        style: TextStyle(
-                          color: AppColors.textLight,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text(
-                          'Đăng ký',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  buildRegisterHint(),
                 ],
               ),
             ),
