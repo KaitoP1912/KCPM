@@ -6,6 +6,7 @@ import 'models/debt.dart';
 import 'models/expense.dart';
 import 'models/household.dart';
 import 'services/api_service.dart';
+import 'activity_screen.dart';
 
 class HouseholdDetailScreen extends StatefulWidget {
   final Household household;
@@ -682,6 +683,20 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
             ),
           ),
           const SizedBox(width: 8),
+
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ActivityScreen(
+                    householdId: widget.household.id,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.history_rounded),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(

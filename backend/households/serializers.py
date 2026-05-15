@@ -1,8 +1,15 @@
-from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from households.models import Household, HouseholdMember, Activity
+from rest_framework import serializers
+
+from households.models import (
+    Activity,
+    Household,
+    HouseholdMember,
+    Notification,
+)
 
 User = get_user_model()
+
 
 class HouseholdMemberSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
@@ -39,6 +46,7 @@ class HouseholdSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['owner']
 
+
 class AddHouseholdMemberSerializer(serializers.Serializer):
     email = serializers.EmailField()
     role = serializers.ChoiceField(
@@ -54,14 +62,18 @@ class AddHouseholdMemberSerializer(serializers.Serializer):
                 'Không tìm thấy người dùng với email này.'
             )
         return value
-    
+
+
 class ActivitySerializer(serializers.ModelSerializer):
     actor_name = serializers.SerializerMethodField()
+    household_name = serializers.CharField(source='household.name', read_only=True)
 
     class Meta:
         model = Activity
         fields = [
             'id',
+            'household',
+            'household_name',
             'activity_type',
             'title',
             'amount',
@@ -72,3 +84,31 @@ class ActivitySerializer(serializers.ModelSerializer):
 
     def get_actor_name(self, obj):
         return obj.actor.full_name or obj.actor.email
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+    household_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            'id',
+            'notification_type',
+            'level',
+            'title',
+            'amount',
+            'is_read',
+            'metadata',
+            'actor_name',
+            'household_name',
+            'created_at',
+        ]
+
+    def get_actor_name(self, obj):
+        return obj.actor.full_name or obj.actor.email
+
+    def get_household_name(self, obj):
+        if obj.household:
+            return obj.household.name
+        return None

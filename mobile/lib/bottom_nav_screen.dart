@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'activity_screen.dart';
 import 'app_theme.dart';
 import 'create_household_screen.dart';
 import 'home_screen.dart';
@@ -199,19 +200,6 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class ActivityScreen extends StatelessWidget {
-  const ActivityScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const _SimpleFeatureScreen(
-      title: 'Hoạt động',
-      icon: Icons.receipt_long_rounded,
-      description: 'Timeline giao dịch và lịch sử sẽ được hiển thị tại đây.',
     );
   }
 }

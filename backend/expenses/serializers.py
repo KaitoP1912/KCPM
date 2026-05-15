@@ -4,7 +4,11 @@ from rest_framework import serializers
 
 from accounts.models import User
 from expenses.models import Debt, Expense, ExpenseParticipant
-from households.models import Activity
+from households.models import Activity, HouseholdMember, Notification
+
+
+def get_user_display_name(user):
+    return user.full_name or user.email
 
 
 class ExpenseParticipantInputSerializer(serializers.Serializer):
@@ -30,19 +34,54 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
             'participants',
         ]
 
+    def validate(self, attrs):
+        household = attrs.get('household')
+        payer = attrs.get('payer')
+        participants = attrs.get('participants', [])
+
+        if not participants:
+            raise serializers.ValidationError(
+                'Vui lòng chọn ít nhất một người tham gia chia tiền.'
+            )
+
+        if not HouseholdMember.objects.filter(
+            household=household,
+            user=payer
+        ).exists():
+            raise serializers.ValidationError(
+                'Người trả tiền không thuộc nhóm này.'
+            )
+
+        participant_ids = [item['user_id'] for item in participants]
+
+        valid_member_count = HouseholdMember.objects.filter(
+            household=household,
+            user_id__in=participant_ids
+        ).count()
+
+        if valid_member_count != len(set(participant_ids)):
+            raise serializers.ValidationError(
+                'Danh sách người chia tiền có người không thuộc nhóm.'
+            )
+
+        return attrs
+
     def create(self, validated_data):
         participants_data = validated_data.pop('participants')
 
         expense = Expense.objects.create(**validated_data)
 
+        payer_name = get_user_display_name(expense.payer)
+
         Activity.objects.create(
             household=expense.household,
             actor=expense.payer,
             activity_type=Activity.ActivityType.EXPENSE_CREATED,
-            title=f'{expense.payer.email} đã thêm khoản chi "{expense.title}"',
+            title=f'{payer_name} đã thêm khoản "{expense.title}"',
             amount=expense.amount,
             metadata={
-                'expense_id': str(expense.id)
+                'expense_id': str(expense.id),
+                'participant_count': len(participants_data),
             }
         )
 
@@ -62,12 +101,31 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
             )
 
             if user != expense.payer:
-                Debt.objects.create(
+                debt = Debt.objects.create(
                     household=expense.household,
                     expense=expense,
                     from_user=user,
                     to_user=expense.payer,
                     amount=split_amount
+                )
+
+                Notification.objects.create(
+                    recipient=user,
+                    actor=expense.payer,
+                    household=expense.household,
+                    notification_type=Notification.NotificationType.DEBT_CREATED,
+                    level=Notification.Level.PUSH,
+                    title=(
+                        f'{payer_name} đã thêm khoản "{expense.title}", '
+                        f'bạn cần chia {split_amount:,.0f}đ'
+                    ).replace(',', '.'),
+                    amount=split_amount,
+                    metadata={
+                        'expense_id': str(expense.id),
+                        'debt_id': str(debt.id),
+                        'payer_id': expense.payer.id,
+                        'share_amount': str(split_amount),
+                    }
                 )
 
         return expense
