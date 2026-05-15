@@ -4,6 +4,7 @@ import 'activity_screen.dart';
 import 'app_theme.dart';
 import 'create_household_screen.dart';
 import 'home_screen.dart';
+import 'services/api_service.dart';
 
 class BottomNavScreen extends StatefulWidget {
   const BottomNavScreen({super.key});
@@ -16,6 +17,26 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
   int currentIndex = 0;
   int homeReloadKey = 0;
 
+  int unreadNotificationCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    loadUnreadCount();
+  }
+
+  Future<void> loadUnreadCount() async {
+    try {
+      final count = await ApiService.getUnreadNotificationCount();
+
+      if (!mounted) return;
+
+      setState(() {
+        unreadNotificationCount = count;
+      });
+    } catch (_) {}
+  }
+
   void goHomeAndReload() {
     setState(() {
       homeReloadKey++;
@@ -23,10 +44,14 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
     });
   }
 
-  void changeTab(int index) {
+  Future<void> changeTab(int index) async {
     setState(() {
       currentIndex = index;
     });
+
+    if (index == 1) {
+      await loadUnreadCount();
+    }
   }
 
   @override
@@ -50,7 +75,10 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
         child: Container(
           height: 86,
           margin: const EdgeInsets.fromLTRB(18, 0, 18, 14),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 8,
+          ),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(28),
@@ -74,6 +102,7 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
                 index: 1,
                 icon: Icons.receipt_long_rounded,
                 label: 'Hoạt động',
+                badgeCount: unreadNotificationCount,
               ),
               buildCenterButton(),
               buildNavItem(
@@ -147,6 +176,7 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
     required int index,
     required IconData icon,
     required String label,
+    int badgeCount = 0,
   }) {
     final isActive = currentIndex == index;
 
@@ -157,28 +187,74 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              padding: const EdgeInsets.all(9),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? AppColors.primary.withValues(alpha: 0.10)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                icon,
-                size: 23,
-                color: isActive ? AppColors.primary : AppColors.textLight,
-              ),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.all(9),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? AppColors.primary.withValues(alpha: 0.10)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(
+                    icon,
+                    size: 23,
+                    color: isActive
+                        ? AppColors.primary
+                        : AppColors.textLight,
+                  ),
+                ),
+
+                if (badgeCount > 0)
+                  Positioned(
+                    top: -4,
+                    right: -6,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 19,
+                        minHeight: 19,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 2,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          badgeCount > 99
+                              ? '99+'
+                              : badgeCount.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 5),
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 220),
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                color: isActive ? AppColors.primary : AppColors.textLight,
+                fontWeight: isActive
+                    ? FontWeight.w800
+                    : FontWeight.w600,
+                color: isActive
+                    ? AppColors.primary
+                    : AppColors.textLight,
                 letterSpacing: -0.1,
               ),
               child: Text(
@@ -212,7 +288,8 @@ class AddExpenseEntryScreen extends StatelessWidget {
     return const _SimpleFeatureScreen(
       title: 'Thêm chi tiêu',
       icon: Icons.add_rounded,
-      description: 'Chọn một nhóm ở Trang chủ để thêm khoản chi vào nhóm đó.',
+      description:
+          'Chọn một nhóm ở Trang chủ để thêm khoản chi vào nhóm đó.',
     );
   }
 }
@@ -225,7 +302,8 @@ class DebtOverviewScreen extends StatelessWidget {
     return const _SimpleFeatureScreen(
       title: 'Công nợ',
       icon: Icons.sync_alt_rounded,
-      description: 'Tổng quan ai nợ ai sẽ được gom tại màn hình này.',
+      description:
+          'Tổng quan ai nợ ai sẽ được gom tại màn hình này.',
     );
   }
 }
@@ -238,7 +316,8 @@ class ProfileScreen extends StatelessWidget {
     return const _SimpleFeatureScreen(
       title: 'Cá nhân',
       icon: Icons.person_rounded,
-      description: 'Hồ sơ, đăng xuất và cài đặt tài khoản.',
+      description:
+          'Hồ sơ, đăng xuất và cài đặt tài khoản.',
     );
   }
 }
