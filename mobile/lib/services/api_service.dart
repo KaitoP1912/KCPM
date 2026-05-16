@@ -1,20 +1,20 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 
 class ApiService {
+  static const String apiHost = String.fromEnvironment(
+    'API_HOST',
+    defaultValue: '192.168.0.5',
+  );
+
   static String get baseUrl {
     if (kIsWeb) {
-      return "http://127.0.0.1:8000/api";
+      return 'http://127.0.0.1:8000/api';
     }
 
-    // Android Emulator
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return "http://10.0.2.2:8000/api";
-    }
-
-    // Real device
-    return "http://192.168.1.143:8000/api";
+    return 'http://$apiHost:8000/api';
   }
 
   static final Dio dio = Dio(

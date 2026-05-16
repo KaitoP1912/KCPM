@@ -7,6 +7,7 @@ import 'bottom_nav_screen.dart';
 import 'firebase_options.dart';
 import 'login_screen.dart';
 import 'services/api_service.dart';
+import 'package:flutter/foundation.dart';
 
 final GlobalKey<NavigatorState> navigatorKey =
     GlobalKey<NavigatorState>();
@@ -68,49 +69,39 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> setupFirebaseMessaging() async {
     debugPrint('SETUP FIREBASE START');
-    
-    final messaging = FirebaseMessaging.instance;
 
-    await messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    final token = await messaging.getToken();
-
-    debugPrint('FCM TOKEN: $token');
-
-    if (token != null) {
-      try {
-        await ApiService.saveFCMToken(token);
-      } catch (e) {
-        debugPrint('SAVE FCM TOKEN ERROR: $e');
-      }
+    if (kIsWeb) {
+      debugPrint('SKIP FCM ON WEB');
+      return;
     }
 
-    FirebaseMessaging.onMessage.listen((message) {
-      debugPrint(
-        'FOREGROUND MESSAGE: ${message.notification?.title}',
+    try {
+      final messaging = FirebaseMessaging.instance;
+
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
       );
 
-      final context = navigatorKey.currentContext;
+      final token = await messaging.getToken();
 
-      if (context != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              message.notification?.title ??
-                  'Thông báo mới',
-            ),
-          ),
-        );
+      debugPrint('FCM TOKEN: $token');
+
+      if (token != null) {
+        await ApiService.saveFCMToken(token);
       }
-    });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      debugPrint('NOTIFICATION CLICKED');
-    });
+      FirebaseMessaging.onMessage.listen((message) {
+        debugPrint('FOREGROUND MESSAGE: ${message.notification?.title}');
+      });
+
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        debugPrint('NOTIFICATION CLICKED');
+      });
+    } catch (e) {
+      debugPrint('FCM ERROR: $e');
+    }
   }
 
   @override
