@@ -30,6 +30,8 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
   double totalExpense = 0;
 
+  String currentUserEmail = '';
+
   final PageController expensePageController =
     PageController();
 
@@ -45,6 +47,15 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
     setState(() {
       isLoading = true;
     });
+
+    final savedEmail = await ApiService.getSavedEmail();
+
+    if (savedEmail != null && savedEmail.isNotEmpty) {
+      currentUserEmail = savedEmail.trim().toLowerCase();
+    } else {
+      final profile = await ApiService.getProfile();
+      currentUserEmail = profile['email']?.toString().trim().toLowerCase() ?? '';
+    }
 
     try {
       final expenseData = await ApiService.getHouseholdExpenses(
@@ -189,6 +200,24 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
           RegExp(r'\B(?=(\d{3})+(?!\d))'),
           (match) => '.',
         );
+  }
+
+  String displayUserName({
+    required String name,
+    required String email,
+  }) {
+    final normalizedEmail = email.trim().toLowerCase();
+
+    if (normalizedEmail.isNotEmpty &&
+        normalizedEmail == currentUserEmail) {
+      return 'Bạn';
+    }
+
+    if (name.trim().isNotEmpty) {
+      return name;
+    }
+
+    return email;
   }
 
   Widget buildAvatar({
@@ -618,11 +647,15 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
             )
           else
             SizedBox(
-              height: debts.length <= 3
-                  ? debts.length * 82.0
-                  : 230,
+              height: debts.length == 1
+                ? 116.0
+                : debts.length == 2
+                    ? 224.0
+                    : 312.0,
               child: ListView.builder(
-                physics: const ClampingScrollPhysics(),
+                physics: debts.length >= 4
+                  ? const ClampingScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
                 padding: EdgeInsets.zero,
                 itemCount: debts.length,
                 itemBuilder: (context, index) {
@@ -638,13 +671,15 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Widget buildCompactDebtCard(Debt debt) {
-    final fromName = debt.fromUserName.isNotEmpty
-        ? debt.fromUserName
-        : debt.fromUserEmail;
+    final fromName = displayUserName(
+      name: debt.fromUserName,
+      email: debt.fromUserEmail,
+    );
 
-    final toName = debt.toUserName.isNotEmpty
-        ? debt.toUserName
-        : debt.toUserEmail;
+    final toName = displayUserName(
+      name: debt.toUserName,
+      email: debt.toUserEmail,
+    );
 
     return GestureDetector(
       onTap: () => openTransferQR(debt),
@@ -902,7 +937,10 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         children: [
           buildAvatar(
             imageUrl: expense.payerAvatar,
-            name: expense.displayPayer,
+            name: displayUserName(
+              name: expense.payerName,
+              email: expense.payerEmail,
+            ),
             radius: 24,
           ),
           const SizedBox(width: 14),
@@ -922,7 +960,10 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  expense.displayPayer,
+                  displayUserName(
+                    name: expense.payerName,
+                    email: expense.payerEmail,
+                  ),
                   style: const TextStyle(
                     color: AppColors.textLight,
                     fontWeight: FontWeight.w600,
