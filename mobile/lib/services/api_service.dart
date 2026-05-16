@@ -408,4 +408,30 @@ class ApiService {
   static Future<void> markAllNotificationsAsRead() async {
     await dio.patch('/notifications/mark-all-read/');
   }
+
+  static Future<Map<String, dynamic>> getProfile() async {
+    final response = await dio.get('/auth/profile/');
+    return Map<String, dynamic>.from(response.data);
+  }
+
+  static Future<Map<String, dynamic>> updateProfile({
+    required String fullName,
+    required String phoneNumber,
+    required String bankName,
+    required String bankAccountNumber,
+    required String bankAccountHolder,
+  }) async {
+    final response = await dio.patch(
+      '/auth/profile/',
+      data: {
+        'full_name': fullName,
+        'phone_number': phoneNumber,
+        'bank_name': bankName,
+        'bank_account_number': bankAccountNumber,
+        'bank_account_holder': bankAccountHolder,
+      },
+    );
+
+    return Map<String, dynamic>.from(response.data);
+  }
 }
