@@ -30,6 +30,11 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
   double totalExpense = 0;
 
+  final PageController expensePageController =
+    PageController();
+
+  int currentExpensePage = 0;
+
   @override
   void initState() {
     super.initState();
@@ -184,6 +189,35 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
           RegExp(r'\B(?=(\d{3})+(?!\d))'),
           (match) => '.',
         );
+  }
+
+  Widget buildAvatar({
+    required String imageUrl,
+    required String name,
+    double radius = 24,
+  }) {
+    if (imageUrl.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(imageUrl),
+        backgroundColor: Colors.grey.shade200,
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: AppColors.primary,
+      child: Text(
+        name.isNotEmpty
+            ? name[0].toUpperCase()
+            : '?',
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+          fontSize: radius * 0.8,
+        ),
+      ),
+    );
   }
 
   Future<void> openTransferQR(Debt debt) async {
@@ -428,35 +462,74 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Widget buildMembersSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Thành viên',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textDark,
-            letterSpacing: -0.4,
+    final members = widget.household.members;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Thành viên',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () {},
+                child: const Text('View all'),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 16),
-        if (widget.household.members.isEmpty)
-          buildEmptyCard(
-            icon: Icons.people_outline_rounded,
-            title: 'Chưa có thành viên',
-          )
-        else
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: widget.household.members
-                .map(
-                  (member) => buildMemberChip(member),
-                )
-                .toList(),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 88,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: members.length,
+              separatorBuilder: (_, _) =>
+                  const SizedBox(width: 16),
+              itemBuilder: (_, index) {
+                final member = members[index];
+
+                return SizedBox(
+                  width: 64,
+                  child: Column(
+                    children: [
+                      buildAvatar(
+                        imageUrl: member.userAvatar,
+                        name: member.displayName,
+                        radius: 22,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        member.displayName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -509,27 +582,145 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Widget buildDebtSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Công nợ',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textDark,
-            letterSpacing: -0.4,
+    final previewDebts = debts;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Công nợ',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () {},
+                child: const Text('View all'),
+              ),
+            ],
           ),
+          const SizedBox(height: 16),
+          if (previewDebts.isEmpty)
+            buildEmptyCard(
+              icon: Icons.check_circle_outline,
+              title: 'Không có công nợ',
+            )
+          else
+            SizedBox(
+              height: debts.length <= 3
+                  ? debts.length * 82.0
+                  : 230,
+              child: ListView.builder(
+                physics: const ClampingScrollPhysics(),
+                padding: EdgeInsets.zero,
+                itemCount: debts.length,
+                itemBuilder: (context, index) {
+                  return buildCompactDebtCard(
+                    debts[index],
+                  );
+                },
+              ),
+            ),
+          ]
+      ),
+    );
+  }
+
+  Widget buildCompactDebtCard(Debt debt) {
+    final fromName = debt.fromUserName.isNotEmpty
+        ? debt.fromUserName
+        : debt.fromUserEmail;
+
+    final toName = debt.toUserName.isNotEmpty
+        ? debt.toUserName
+        : debt.toUserEmail;
+
+    return GestureDetector(
+      onTap: () => openTransferQR(debt),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(22),
         ),
-        const SizedBox(height: 16),
-        if (debts.isEmpty)
-          buildEmptyCard(
-            icon: Icons.check_circle_outline,
-            title: 'Không có công nợ',
-          )
-        else
-          ...debts.map(buildDebtCard),
-      ],
+        child: Row(
+          children: [
+            buildAvatar(
+              imageUrl: debt.fromUserAvatar,
+              name: fromName,
+              radius: 24,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fromName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textDark,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Cần trả ${formatMoney(debt.amount)}đ',
+                    style: const TextStyle(
+                      color: AppColors.warning,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.arrow_downward_rounded,
+                        size: 16,
+                        color: AppColors.textLight,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Người nhận: $toName',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textLight,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            buildAvatar(
+              imageUrl: debt.toUserAvatar,
+              name: toName,
+              radius: 24,
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -585,27 +776,180 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Widget buildExpenseSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Khoản chi',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: AppColors.textDark,
-            letterSpacing: -0.4,
+    final pages = <List<Expense>>[];
+
+    for (int i = 0; i < expenses.length; i += 6) {
+      pages.add(
+        expenses.skip(i).take(6).toList(),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Khoản chi gần đây',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: () {},
+                child: const Text('View all'),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 16),
-        if (expenses.isEmpty)
-          buildEmptyCard(
-            icon: Icons.receipt_long,
-            title: 'Chưa có khoản chi',
-          )
-        else
-          ...expenses.map(buildExpenseCard),
-      ],
+          const SizedBox(height: 16),
+
+          if (expenses.isEmpty)
+            buildEmptyCard(
+              icon: Icons.receipt_long,
+              title: 'Chưa có khoản chi',
+            )
+          else
+            Column(
+              children: [
+                SizedBox(
+                  height: 710,
+                  child: PageView.builder(
+                    controller:
+                        expensePageController,
+                    itemCount: pages.length,
+                    onPageChanged: (index) {
+                      setState(() {
+                        currentExpensePage =
+                            index;
+                      });
+                    },
+                    itemBuilder: (_, pageIndex) {
+                      final pageExpenses =
+                          pages[pageIndex];
+
+                      return Column(
+                        children: pageExpenses
+                            .map(
+                              buildCompactExpenseCard,
+                            )
+                            .toList(),
+                      );
+                    },
+                  ),
+                  ),
+                const SizedBox(height: 0),
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment.center,
+                  children: List.generate(
+                    pages.length,
+                    (index) {
+                      final active =
+                          index ==
+                          currentExpensePage;
+
+                      return AnimatedContainer(
+                        duration:
+                            const Duration(
+                          milliseconds: 220,
+                        ),
+                        margin:
+                            const EdgeInsets.symmetric(
+                          horizontal: 4,
+                        ),
+                        width: active ? 18 : 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? AppColors.primary
+                              : AppColors.border,
+                          borderRadius:
+                              BorderRadius.circular(
+                            999,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildCompactExpenseCard(
+    Expense expense,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: [
+          buildAvatar(
+            imageUrl: expense.payerAvatar,
+            name: expense.displayPayer,
+            radius: 24,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  expense.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  expense.displayPayer,
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  expense.expenseDate,
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '${formatMoney(expense.amount)}đ',
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

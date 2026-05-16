@@ -3,9 +3,11 @@ class Debt {
 
   final String fromUserName;
   final String fromUserEmail;
+  final String fromUserAvatar;
 
   final String toUserName;
   final String toUserEmail;
+  final String toUserAvatar;
 
   final String bankName;
   final String bankAccountNumber;
@@ -19,8 +21,10 @@ class Debt {
     required this.id,
     required this.fromUserName,
     required this.fromUserEmail,
+    required this.fromUserAvatar,
     required this.toUserName,
     required this.toUserEmail,
+    required this.toUserAvatar,
     required this.bankName,
     required this.bankAccountNumber,
     required this.bankAccountHolder,
@@ -28,7 +32,9 @@ class Debt {
     required this.isPaid,
   });
 
-  factory Debt.fromJson(Map<String, dynamic> json) {
+  factory Debt.fromJson(
+    Map<String, dynamic> json,
+  ) {
     return Debt(
       id: json['id'].toString(),
 
@@ -38,11 +44,17 @@ class Debt {
       fromUserEmail:
           json['from_user_email']?.toString() ?? '',
 
+      fromUserAvatar:
+          json['from_user_avatar']?.toString() ?? '',
+
       toUserName:
           json['to_user_name']?.toString() ?? '',
 
       toUserEmail:
           json['to_user_email']?.toString() ?? '',
+
+      toUserAvatar:
+          json['to_user_avatar']?.toString() ?? '',
 
       bankName:
           json['bank_name']?.toString() ?? '',
@@ -58,7 +70,8 @@ class Debt {
           ) ??
           0,
 
-      isPaid: json['is_paid'] ?? false,
+      isPaid:
+          json['is_paid'] ?? false,
     );
   }
 }
