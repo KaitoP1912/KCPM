@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'activity_screen.dart';
 import 'add_expense_screen.dart';
 import 'app_theme.dart';
 import 'models/debt.dart';
 import 'models/expense.dart';
 import 'models/household.dart';
 import 'services/api_service.dart';
-import 'activity_screen.dart';
 
 class HouseholdDetailScreen extends StatefulWidget {
   final Household household;
@@ -116,55 +116,44 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
     await showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Thêm thành viên',
-          ),
+          title: const Text('Thêm thành viên'),
           content: TextField(
             controller: controller,
-            keyboardType:
-                TextInputType.emailAddress,
-            decoration:
-                const InputDecoration(
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
               hintText: 'Nhập email...',
             ),
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(dialogContext);
               },
               child: const Text('Hủy'),
             ),
             ElevatedButton(
               onPressed: () async {
-                final email =
-                    controller.text.trim();
+                final email = controller.text.trim();
 
                 if (email.isEmpty) {
                   return;
                 }
 
                 try {
-                  await ApiService
-                      .addMemberToHousehold(
-                    householdId:
-                        widget.household.id,
+                  await ApiService.addMemberToHousehold(
+                    householdId: widget.household.id,
                     email: email,
                   );
 
-                  if (!mounted) return;
+                  if (!mounted || !dialogContext.mounted) return;
 
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
 
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text(
-                        'Đã thêm thành viên',
-                      ),
+                      content: Text('Đã thêm thành viên'),
                     ),
                   );
 
@@ -172,25 +161,21 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                 } catch (e) {
                   if (!mounted) return;
 
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(
-                        e.toString(),
-                      ),
+                      content: Text(e.toString()),
                     ),
                   );
                 }
               },
-              child: const Text(
-                'Thêm',
-              ),
+              child: const Text('Thêm'),
             ),
           ],
         );
       },
     );
+
+    controller.dispose();
   }
 
   String formatMoney(double amount) {
@@ -683,7 +668,6 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
             ),
           ),
           const SizedBox(width: 8),
-
           IconButton(
             onPressed: () {
               Navigator.push(

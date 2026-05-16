@@ -389,6 +389,25 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const Spacer(),
+        ElevatedButton.icon(
+          onPressed: openCreateHousehold,
+          icon: const Icon(
+            Icons.add_rounded,
+            size: 18,
+          ),
+          label: const Text('Tạo nhóm'),
+          style: ElevatedButton.styleFrom(
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 10,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
         Text(
           '${filteredHouseholds.length}',
           style: const TextStyle(

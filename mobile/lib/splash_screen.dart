@@ -75,10 +75,10 @@ class _SplashScreenState extends State<SplashScreen>
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (_, animation, __) {
+        pageBuilder: (_, animation, _) {
           return isLoggedIn ? const BottomNavScreen() : const LoginScreen();
         },
-        transitionsBuilder: (_, animation, __, child) {
+        transitionsBuilder: (_, animation, _, child) {
           return FadeTransition(
             opacity: CurvedAnimation(
               parent: animation,

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'activity_screen.dart';
 import 'app_theme.dart';
-import 'create_household_screen.dart';
 import 'home_screen.dart';
 import 'services/api_service.dart';
 

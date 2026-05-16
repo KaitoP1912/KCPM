@@ -1,7 +1,8 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
 
 class ApiService {
   static const String apiHost = String.fromEnvironment(
@@ -24,12 +25,12 @@ class ApiService {
       receiveTimeout: const Duration(seconds: 10),
       sendTimeout: const Duration(seconds: 10),
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
     ),
   );
 
-  static bool _isRefreshing = false;
+  static Future<bool>? _refreshTokenFuture;
 
   static Future<void> init() async {
     await loadToken();
@@ -38,39 +39,86 @@ class ApiService {
 
     dio.interceptors.add(
       InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final access = await getAccessToken();
+
+          if (access != null && access.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $access';
+          }
+
+          return handler.next(options);
+        },
         onError: (error, handler) async {
           final statusCode = error.response?.statusCode;
           final requestOptions = error.requestOptions;
-          final isRefreshApi = requestOptions.path.contains('/auth/refresh/');
 
-          if (statusCode == 401 && !isRefreshApi) {
-            if (_isRefreshing) {
-              return handler.next(error);
-            }
+          final isAuthApi =
+              requestOptions.path.contains('/auth/login/') ||
+              requestOptions.path.contains('/auth/register/') ||
+              requestOptions.path.contains('/auth/refresh/');
 
-            _isRefreshing = true;
-            final refreshed = await refreshAccessToken();
-            _isRefreshing = false;
+          final alreadyRetried =
+              requestOptions.extra['alreadyRetried'] == true;
+
+          if (statusCode == 401 && !isAuthApi && !alreadyRetried) {
+            final refreshed = await _refreshTokenSafely();
 
             if (refreshed) {
               try {
-                final token = await getAccessToken();
+                final access = await getAccessToken();
 
-                requestOptions.headers['Authorization'] = 'Bearer $token';
+                final retryOptions = Options(
+                  method: requestOptions.method,
+                  headers: {
+                    ...requestOptions.headers,
+                    if (access != null && access.isNotEmpty)
+                      'Authorization': 'Bearer $access',
+                  },
+                  responseType: requestOptions.responseType,
+                  contentType: requestOptions.contentType,
+                  followRedirects: requestOptions.followRedirects,
+                  validateStatus: requestOptions.validateStatus,
+                  receiveDataWhenStatusError:
+                      requestOptions.receiveDataWhenStatusError,
+                  extra: {
+                    ...requestOptions.extra,
+                    'alreadyRetried': true,
+                  },
+                );
 
-                final clonedResponse = await dio.fetch(requestOptions);
+                final response = await dio.request<dynamic>(
+                  requestOptions.path,
+                  data: requestOptions.data,
+                  queryParameters: requestOptions.queryParameters,
+                  options: retryOptions,
+                  cancelToken: requestOptions.cancelToken,
+                  onSendProgress: requestOptions.onSendProgress,
+                  onReceiveProgress: requestOptions.onReceiveProgress,
+                );
 
-                return handler.resolve(clonedResponse);
-              } catch (_) {}
-            } else {
-              await logout();
+                return handler.resolve(response);
+              } catch (e) {
+                return handler.next(error);
+              }
             }
+
+            await logout();
           }
 
           return handler.next(error);
         },
       ),
     );
+  }
+
+  static Future<bool> _refreshTokenSafely() async {
+    _refreshTokenFuture ??= refreshAccessToken();
+
+    try {
+      return await _refreshTokenFuture!;
+    } finally {
+      _refreshTokenFuture = null;
+    }
   }
 
   static Future<void> saveTokens({
@@ -121,7 +169,18 @@ class ApiService {
         return false;
       }
 
-      final response = await Dio().post(
+      final refreshDio = Dio(
+        BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 10),
+          sendTimeout: const Duration(seconds: 10),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      final response = await refreshDio.post(
         '$baseUrl/auth/refresh/',
         data: {
           'refresh': refresh,
@@ -129,6 +188,10 @@ class ApiService {
       );
 
       final newAccess = response.data['access'];
+
+      if (newAccess == null || newAccess.toString().isEmpty) {
+        return false;
+      }
 
       final prefs = await SharedPreferences.getInstance();
 
@@ -145,7 +208,9 @@ class ApiService {
   static Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
 
-    await prefs.clear();
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
+    await prefs.remove('user_email');
 
     dio.options.headers.remove('Authorization');
   }
@@ -160,8 +225,8 @@ class ApiService {
     try {
       await dio.get('/households/');
       return true;
-    } catch (e) {
-      final refreshed = await refreshAccessToken();
+    } catch (_) {
+      final refreshed = await _refreshTokenSafely();
 
       if (refreshed) {
         try {
@@ -180,10 +245,10 @@ class ApiService {
     required String password,
   }) async {
     return dio.post(
-      "/auth/login/",
+      '/auth/login/',
       data: {
-        "email": email,
-        "password": password,
+        'email': email,
+        'password': password,
       },
     );
   }
@@ -265,7 +330,7 @@ class ApiService {
   static Future<List<dynamic>> getAllDebtsFromHouseholds(
     List<String> householdIds,
   ) async {
-    List<dynamic> allDebts = [];
+    final List<dynamic> allDebts = [];
 
     for (final id in householdIds) {
       try {
