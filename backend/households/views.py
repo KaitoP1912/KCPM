@@ -3,13 +3,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from households.models import Activity, Household, HouseholdMember, Notification
+from households.models import Activity, Household, HouseholdMember
 from households.serializers import (
     ActivitySerializer,
     AddHouseholdMemberSerializer,
     HouseholdSerializer,
-    NotificationSerializer,
 )
+from notifications.models import Notification
+from notifications.services import create_notification
 
 
 def get_user_display_name(user):
@@ -32,16 +33,6 @@ class HouseholdListCreateView(generics.ListCreateAPIView):
             household=household,
             user=self.request.user,
             role=HouseholdMember.Role.OWNER
-        )
-
-        Activity.objects.create(
-            household=household,
-            actor=self.request.user,
-            activity_type=Activity.ActivityType.GROUP_CREATED,
-            title=f'{get_user_display_name(self.request.user)} đã tạo nhóm "{household.name}"',
-            metadata={
-                'household_id': str(household.id),
-            }
         )
 
 
@@ -118,13 +109,15 @@ class AddHouseholdMemberView(APIView):
             }
         )
 
-        Notification.objects.create(
+        create_notification(
             recipient=user_to_add,
             actor=request.user,
             household=household,
             notification_type=Notification.NotificationType.ADDED_TO_GROUP,
-            level=Notification.Level.IN_APP,
+            level=Notification.Level.PUSH,
             title=f'Bạn đã được thêm vào nhóm "{household.name}"',
+            push_title='Chung Ví',
+            push_body=f'Bạn đã được thêm vào nhóm "{household.name}"',
             metadata={
                 'household_id': str(household.id),
                 'added_by_user_id': request.user.id,
@@ -138,7 +131,7 @@ class AddHouseholdMemberView(APIView):
         )
 
         for old_member in old_members:
-            Notification.objects.create(
+            create_notification(
                 recipient=old_member.user,
                 actor=request.user,
                 household=household,
@@ -189,70 +182,3 @@ class AllActivityListView(generics.ListAPIView):
             'actor',
             'household'
         ).distinct().order_by('-created_at')
-
-
-class NotificationListView(generics.ListAPIView):
-    serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Notification.objects.filter(
-            recipient=self.request.user
-        ).select_related(
-            'actor',
-            'household'
-        ).order_by('-created_at')
-
-
-class NotificationUnreadCountView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        count = Notification.objects.filter(
-            recipient=request.user,
-            is_read=False
-        ).count()
-
-        return Response(
-            {'unread_count': count},
-            status=status.HTTP_200_OK
-        )
-
-
-class NotificationMarkReadView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def patch(self, request, pk):
-        notification = Notification.objects.filter(
-            id=pk,
-            recipient=request.user
-        ).first()
-
-        if not notification:
-            return Response(
-                {'detail': 'Không tìm thấy thông báo.'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        notification.is_read = True
-        notification.save(update_fields=['is_read'])
-
-        return Response(
-            {'message': 'Đã đánh dấu là đã đọc.'},
-            status=status.HTTP_200_OK
-        )
-
-
-class NotificationMarkAllReadView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def patch(self, request):
-        Notification.objects.filter(
-            recipient=request.user,
-            is_read=False
-        ).update(is_read=True)
-
-        return Response(
-            {'message': 'Đã đánh dấu tất cả là đã đọc.'},
-            status=status.HTTP_200_OK
-        )

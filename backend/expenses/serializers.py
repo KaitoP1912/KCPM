@@ -4,8 +4,10 @@ from rest_framework import serializers
 
 from accounts.models import User
 from expenses.models import Debt, Expense, ExpenseParticipant
-from households.models import Activity, HouseholdMember, Notification
+from households.models import Activity, HouseholdMember
 
+from notifications.models import Notification
+from notifications.services import create_notification
 
 def get_user_display_name(user):
     return user.full_name or user.email

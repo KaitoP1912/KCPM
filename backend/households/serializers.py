@@ -5,15 +5,20 @@ from households.models import (
     Activity,
     Household,
     HouseholdMember,
-    Notification,
 )
 
 User = get_user_model()
 
 
 class HouseholdMemberSerializer(serializers.ModelSerializer):
-    user_email = serializers.EmailField(source='user.email', read_only=True)
-    user_full_name = serializers.CharField(source='user.full_name', read_only=True)
+    user_email = serializers.EmailField(
+        source='user.email',
+        read_only=True
+    )
+    user_full_name = serializers.CharField(
+        source='user.full_name',
+        read_only=True
+    )
 
     class Meta:
         model = HouseholdMember
@@ -28,8 +33,14 @@ class HouseholdMemberSerializer(serializers.ModelSerializer):
 
 
 class HouseholdSerializer(serializers.ModelSerializer):
-    owner_email = serializers.EmailField(source='owner.email', read_only=True)
-    members = HouseholdMemberSerializer(many=True, read_only=True)
+    owner_email = serializers.EmailField(
+        source='owner.email',
+        read_only=True
+    )
+    members = HouseholdMemberSerializer(
+        many=True,
+        read_only=True
+    )
 
     class Meta:
         model = Household
@@ -66,7 +77,10 @@ class AddHouseholdMemberSerializer(serializers.Serializer):
 
 class ActivitySerializer(serializers.ModelSerializer):
     actor_name = serializers.SerializerMethodField()
-    household_name = serializers.CharField(source='household.name', read_only=True)
+    household_name = serializers.CharField(
+        source='household.name',
+        read_only=True
+    )
 
     class Meta:
         model = Activity
@@ -84,31 +98,3 @@ class ActivitySerializer(serializers.ModelSerializer):
 
     def get_actor_name(self, obj):
         return obj.actor.full_name or obj.actor.email
-
-
-class NotificationSerializer(serializers.ModelSerializer):
-    actor_name = serializers.SerializerMethodField()
-    household_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Notification
-        fields = [
-            'id',
-            'notification_type',
-            'level',
-            'title',
-            'amount',
-            'is_read',
-            'metadata',
-            'actor_name',
-            'household_name',
-            'created_at',
-        ]
-
-    def get_actor_name(self, obj):
-        return obj.actor.full_name or obj.actor.email
-
-    def get_household_name(self, obj):
-        if obj.household:
-            return obj.household.name
-        return None

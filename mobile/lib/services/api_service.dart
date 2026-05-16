@@ -236,28 +236,6 @@ class ApiService {
     return List<dynamic>.from(response.data);
   }
 
-  static Future<List<dynamic>> getNotifications() async {
-    final response = await dio.get('/households/notifications/');
-    return List<dynamic>.from(response.data);
-  }
-
-  static Future<int> getUnreadNotificationCount() async {
-    final response = await dio.get('/households/notifications/unread-count/');
-    return response.data['unread_count'] ?? 0;
-  }
-
-  static Future<void> markNotificationAsRead(
-    String notificationId,
-  ) async {
-    await dio.patch(
-      '/households/notifications/$notificationId/read/',
-    );
-  }
-
-  static Future<void> markAllNotificationsAsRead() async {
-    await dio.patch('/households/notifications/mark-all-read/');
-  }
-
   static Future<List<dynamic>> getHouseholdExpenses(
     String householdId,
   ) async {
@@ -324,5 +302,39 @@ class ApiService {
         'split_type': 'equal',
       },
     );
+  }
+
+  static Future<void> saveFCMToken(
+    String token,
+  ) async {
+    await dio.post(
+      '/notifications/save-fcm-token/',
+      data: {
+        'token': token,
+        'device_type': 'android',
+      },
+    );
+  }
+
+  static Future<List<dynamic>> getNotifications() async {
+    final response = await dio.get('/notifications/');
+    return List<dynamic>.from(response.data);
+  }
+
+  static Future<int> getUnreadNotificationCount() async {
+    final response = await dio.get('/notifications/unread-count/');
+    return response.data['unread_count'] ?? 0;
+  }
+
+  static Future<void> markNotificationAsRead(
+    String notificationId,
+  ) async {
+    await dio.patch(
+      '/notifications/$notificationId/read/',
+    );
+  }
+
+  static Future<void> markAllNotificationsAsRead() async {
+    await dio.patch('/notifications/mark-all-read/');
   }
 }
