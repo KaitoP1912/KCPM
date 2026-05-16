@@ -8,7 +8,13 @@ class ApiService {
       return "http://127.0.0.1:8000/api";
     }
 
-    return "http://192.168.0.5:8000/api";
+    // Android Emulator
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return "http://10.0.2.2:8000/api";
+    }
+
+    // Real device
+    return "http://192.168.1.143:8000/api";
   }
 
   static final Dio dio = Dio(

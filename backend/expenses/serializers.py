@@ -111,23 +111,37 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
                     amount=split_amount
                 )
 
-                Notification.objects.create(
+                create_notification(
                     recipient=user,
                     actor=expense.payer,
                     household=expense.household,
-                    notification_type=Notification.NotificationType.DEBT_CREATED,
+
+                    notification_type=(
+                        Notification.NotificationType.DEBT_CREATED
+                    ),
+
                     level=Notification.Level.PUSH,
+
                     title=(
                         f'{payer_name} đã thêm khoản "{expense.title}", '
                         f'bạn cần chia {split_amount:,.0f}đ'
                     ).replace(',', '.'),
+
                     amount=split_amount,
+
                     metadata={
                         'expense_id': str(expense.id),
                         'debt_id': str(debt.id),
                         'payer_id': expense.payer.id,
                         'share_amount': str(split_amount),
-                    }
+                    },
+
+                    push_title='Khoản chi mới',
+
+                    push_body=(
+                        f'{payer_name} vừa thêm '
+                        f'"{expense.title}"'
+                    ),
                 )
 
         return expense

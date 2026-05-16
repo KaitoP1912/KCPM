@@ -10,7 +10,7 @@ def create_notification(
     title,
     household=None,
     amount=None,
-    level=Notification.Level.IN_APP,
+    level=Notification.Level.PUSH,
     metadata=None,
     push_title='Chung Ví',
     push_body=None,
@@ -26,7 +26,7 @@ def create_notification(
         metadata=metadata or {},
     )
 
-    if level == Notification.Level.PUSH:
+    try:
         send_push_notification_to_user(
             user=recipient,
             title=push_title,
@@ -34,8 +34,18 @@ def create_notification(
             data={
                 'notification_id': str(notification.id),
                 'notification_type': notification.notification_type,
-                'household_id': str(household.id) if household else '',
-            }
+                'household_id': (
+                    str(household.id)
+                    if household else ''
+                ),
+            },
         )
+
+        print(
+            f'FCM SUCCESS: {recipient.email} - {title}'
+        )
+
+    except Exception as e:
+        print('FCM SEND ERROR:', e)
 
     return notification
