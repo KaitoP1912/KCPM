@@ -7,6 +7,7 @@ import 'models/debt.dart';
 import 'models/expense.dart';
 import 'models/household.dart';
 import 'services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HouseholdDetailScreen extends StatefulWidget {
   final Household household;
@@ -183,6 +184,67 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
           RegExp(r'\B(?=(\d{3})+(?!\d))'),
           (match) => '.',
         );
+  }
+
+  Future<void> openTransferQR(Debt debt) async {
+    if (debt.bankName.isEmpty ||
+        debt.bankAccountNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Người nhận chưa cập nhật tài khoản ngân hàng',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    final amount = debt.amount.toInt();
+
+    final encodedMessage = Uri.encodeComponent(
+      'Thanh toan Chung Vi',
+    );
+
+    final encodedAccountName = Uri.encodeComponent(
+      debt.bankAccountHolder,
+    );
+
+    final url =
+        'https://img.vietqr.io/image/'
+        '${debt.bankName}-${debt.bankAccountNumber}-compact2.png'
+        '?amount=$amount'
+        '&addInfo=$encodedMessage'
+        '&accountName=$encodedAccountName';
+
+    final uri = Uri.parse(url);
+
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Không thể mở QR chuyển khoản',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Đã xảy ra lỗi khi mở QR',
+          ),
+        ),
+      );
+    }
   }
 
   String getMemberEmail(dynamic member) {
