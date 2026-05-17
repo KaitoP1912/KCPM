@@ -253,6 +253,25 @@ class ApiService {
     );
   }
 
+  static Future<Response> register({
+    required String email,
+    required String username,
+    required String fullName,
+    required String phoneNumber,
+    required String password,
+  }) async {
+    return dio.post(
+      '/auth/register/',
+      data: {
+        'email': email,
+        'username': username,
+        'full_name': fullName,
+        'phone_number': phoneNumber,
+        'password': password,
+      },
+    );
+  }
+
   static Future<List<dynamic>> getHouseholds() async {
     final response = await dio.get('/households/');
     return List<dynamic>.from(response.data);

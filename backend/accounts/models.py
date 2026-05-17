@@ -5,7 +5,11 @@ from django.db import models
 class User(AbstractUser):
     email = models.EmailField(unique=True)
 
-    full_name = models.CharField(max_length=255)
+    full_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default=''
+    )
 
     phone_number = models.CharField(
         max_length=20,
@@ -17,6 +21,24 @@ class User(AbstractUser):
         upload_to='avatars/',
         blank=True,
         null=True
+    )
+
+    bank_name = models.CharField(
+        max_length=100,
+        blank=True,
+        default=''
+    )
+
+    bank_account_number = models.CharField(
+        max_length=50,
+        blank=True,
+        default=''
+    )
+
+    bank_account_holder = models.CharField(
+        max_length=255,
+        blank=True,
+        default=''
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

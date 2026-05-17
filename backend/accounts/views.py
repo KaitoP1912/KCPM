@@ -4,12 +4,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from notifications.models import FCMDevice
-from accounts.serializers import RegisterSerializer
+from accounts.serializers import (
+    RegisterSerializer,
+    UserProfileSerializer,
+)
 
 
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
+
+
+class UserProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = UserProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
 
 
 class SaveFCMTokenView(APIView):

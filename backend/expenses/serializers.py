@@ -152,50 +152,118 @@ class ExpenseListSerializer(serializers.ModelSerializer):
         source='payer.full_name',
         read_only=True
     )
+
     payer_email = serializers.EmailField(
         source='payer.email',
         read_only=True
     )
 
+    payer_avatar = serializers.SerializerMethodField()
+
     class Meta:
         model = Expense
+
         fields = [
             'id',
             'title',
             'amount',
+
             'payer_name',
             'payer_email',
+            'payer_avatar',
+
             'expense_date',
             'note',
         ]
 
+    def get_payer_avatar(self, obj):
+        request = self.context.get('request')
+
+        if obj.payer.avatar and request:
+            return request.build_absolute_uri(
+                obj.payer.avatar.url
+            )
+
+        return ''
 
 class DebtSerializer(serializers.ModelSerializer):
     from_user_name = serializers.CharField(
         source='from_user.full_name',
         read_only=True
     )
+
     from_user_email = serializers.EmailField(
         source='from_user.email',
         read_only=True
     )
+
+    from_user_avatar = serializers.SerializerMethodField()
+
     to_user_name = serializers.CharField(
         source='to_user.full_name',
         read_only=True
     )
+
     to_user_email = serializers.EmailField(
         source='to_user.email',
         read_only=True
     )
 
+    to_user_avatar = serializers.SerializerMethodField()
+
+    bank_name = serializers.CharField(
+        source='to_user.bank_name',
+        read_only=True
+    )
+
+    bank_account_number = serializers.CharField(
+        source='to_user.bank_account_number',
+        read_only=True
+    )
+
+    bank_account_holder = serializers.CharField(
+        source='to_user.bank_account_holder',
+        read_only=True
+    )
+
     class Meta:
         model = Debt
+
         fields = [
             'id',
+
             'from_user_name',
             'from_user_email',
+            'from_user_avatar',
+
             'to_user_name',
             'to_user_email',
+            'to_user_avatar',
+
+            'bank_name',
+            'bank_account_number',
+            'bank_account_holder',
+
             'amount',
             'is_paid',
         ]
+
+    def get_from_user_avatar(self, obj):
+        request = self.context.get('request')
+
+        if obj.from_user.avatar and request:
+            return request.build_absolute_uri(
+                obj.from_user.avatar.url
+            )
+
+        return ''
+
+    def get_to_user_avatar(self, obj):
+        request = self.context.get('request')
+
+        if obj.to_user.avatar and request:
+            return request.build_absolute_uri(
+                obj.to_user.avatar.url
+            )
+
+        return ''

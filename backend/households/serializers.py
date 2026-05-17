@@ -15,21 +15,38 @@ class HouseholdMemberSerializer(serializers.ModelSerializer):
         source='user.email',
         read_only=True
     )
+
     user_full_name = serializers.CharField(
         source='user.full_name',
         read_only=True
     )
 
+    user_avatar = serializers.SerializerMethodField()
+
     class Meta:
         model = HouseholdMember
+
         fields = [
             'id',
             'user',
+
             'user_email',
             'user_full_name',
+            'user_avatar',
+
             'role',
             'joined_at',
         ]
+
+    def get_user_avatar(self, obj):
+        request = self.context.get('request')
+
+        if obj.user.avatar and request:
+            return request.build_absolute_uri(
+                obj.user.avatar.url
+            )
+
+        return ''
 
 
 class HouseholdSerializer(serializers.ModelSerializer):

@@ -27,3 +27,37 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.save()
 
         return user
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'username',
+            'full_name',
+            'phone_number',
+            'avatar',
+            'avatar_url',
+            'bank_name',
+            'bank_account_number',
+            'bank_account_holder',
+        ]
+
+        read_only_fields = [
+            'id',
+            'email',
+            'username',
+            'avatar_url',
+        ]
+
+    def get_avatar_url(self, obj):
+        request = self.context.get('request')
+
+        if obj.avatar and request:
+            return request.build_absolute_uri(obj.avatar.url)
+
+        return ''

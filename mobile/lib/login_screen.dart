@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'bottom_nav_screen.dart';
 import 'services/api_service.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -194,7 +195,12 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         TextButton(
           onPressed: () {
-            showMessage('Tính năng đăng ký sẽ làm sau');
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const RegisterScreen(),
+              ),
+            );
           },
           child: const Text(
             'Đăng ký',
