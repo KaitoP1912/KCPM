@@ -257,8 +257,6 @@ class ApiService {
   static Future<Response> register({
     required String email,
     required String username,
-    required String fullName,
-    required String phoneNumber,
     required String password,
   }) async {
     return dio.post(
@@ -266,8 +264,6 @@ class ApiService {
       data: {
         'email': email,
         'username': username,
-        'full_name': fullName,
-        'phone_number': phoneNumber,
         'password': password,
       },
     );
