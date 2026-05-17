@@ -45,6 +45,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'bank_name',
             'bank_account_number',
             'bank_account_holder',
+            'auth_provider',
+            'email_verified',
         ]
 
         read_only_fields = [
@@ -65,6 +67,45 @@ class UserProfileSerializer(serializers.ModelSerializer):
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(
         write_only=True
+    )
+
+    new_password = serializers.CharField(
+        write_only=True,
+        min_length=8
+    )
+
+    confirm_password = serializers.CharField(
+        write_only=True
+    )
+
+    def validate(self, attrs):
+        if (
+            attrs['new_password']
+            != attrs['confirm_password']
+        ):
+            raise serializers.ValidationError(
+                {
+                    'confirm_password':
+                    'Mật khẩu xác nhận không khớp'
+                }
+            )
+
+        return attrs
+    
+class ForgotPasswordRequestSerializer(
+    serializers.Serializer
+):
+    email = serializers.EmailField()
+
+
+class ResetPasswordSerializer(
+    serializers.Serializer
+):
+    email = serializers.EmailField()
+
+    otp = serializers.CharField(
+        min_length=6,
+        max_length=6
     )
 
     new_password = serializers.CharField(

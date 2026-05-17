@@ -9,6 +9,9 @@ from accounts.views import (
     SaveFCMTokenView,
     UserProfileView,
     ChangePasswordView,
+    ForgotPasswordRequestView,
+    ResetPasswordView,
+    GoogleLoginView,
 )
 
 
@@ -24,4 +27,10 @@ urlpatterns = [
     path('save-fcm-token/', SaveFCMTokenView.as_view()),
 
     path('change-password/',ChangePasswordView.as_view()),
+
+    path('forgot-password/',ForgotPasswordRequestView.as_view()),
+
+    path('reset-password/',ResetPasswordView.as_view()),
+
+    path('google-login/',GoogleLoginView.as_view()),
 ]

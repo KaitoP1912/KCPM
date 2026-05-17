@@ -19,6 +19,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Map<String, dynamic> profile = {};
 
+  bool get isGoogleAccount {
+    return profile['auth_provider'] == 'google';
+  }
+
   final fullNameController = TextEditingController();
   final phoneController = TextEditingController();
   final bankNameController = TextEditingController();
@@ -723,15 +727,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     value: valueOf('bank_account_holder'),
                   ),
                   const SizedBox(height: 14),
-                  buildSectionTitle('Bảo mật'),
-                  const SizedBox(height: 16),
-                  buildActionTile(
-                    icon: Icons.lock_reset_rounded,
-                    title: 'Đổi mật khẩu',
-                    subtitle:
-                        'Cập nhật mật khẩu đăng nhập tài khoản',
-                    onTap: openChangePasswordDialog,
-                  ),
+                  if (!isGoogleAccount) ...[
+                    const SizedBox(height: 14),
+
+                    buildSectionTitle('Bảo mật'),
+
+                    const SizedBox(height: 16),
+
+                    buildActionTile(
+                      icon: Icons.lock_reset_rounded,
+                      title: 'Đổi mật khẩu',
+                      subtitle:
+                          'Cập nhật mật khẩu đăng nhập tài khoản',
+                      onTap: openChangePasswordDialog,
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   buildLogoutButton(),
                   const SizedBox(height: 120),

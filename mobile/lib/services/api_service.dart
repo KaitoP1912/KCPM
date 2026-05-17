@@ -472,9 +472,14 @@ class ApiService {
 
   static Future<void> loginWithGoogle() async {
     final GoogleSignIn googleSignIn =
-        GoogleSignIn();
+        GoogleSignIn(
+      scopes: [
+        'email',
+      ],
+    );
 
-    final googleUser =
+    final GoogleSignInAccount?
+        googleUser =
         await googleSignIn.signIn();
 
     if (googleUser == null) {
@@ -483,13 +488,17 @@ class ApiService {
       );
     }
 
-    final googleAuth =
+    final GoogleSignInAuthentication
+        googleAuth =
         await googleUser.authentication;
 
-    final idToken =
+    String? token =
         googleAuth.idToken;
 
-    if (idToken == null) {
+    token ??=
+        googleAuth.accessToken;
+
+    if (token == null) {
       throw Exception(
         'Không lấy được Google token',
       );
@@ -498,7 +507,7 @@ class ApiService {
     final response = await dio.post(
       '/auth/google-login/',
       data: {
-        'token': idToken,
+        'token': token,
       },
     );
 

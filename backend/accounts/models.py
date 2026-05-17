@@ -41,6 +41,15 @@ class User(AbstractUser):
         default=''
     )
 
+    auth_provider = models.CharField(
+        max_length=20,
+        default='email'
+    )
+
+    email_verified = models.BooleanField(
+        default=False
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     updated_at = models.DateTimeField(auto_now=True)
