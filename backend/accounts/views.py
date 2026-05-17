@@ -7,7 +7,10 @@ from notifications.models import FCMDevice
 from accounts.serializers import (
     RegisterSerializer,
     UserProfileSerializer,
+    ChangePasswordSerializer,
 )
+
+from django.contrib.auth.hashers import check_password
 
 
 class RegisterView(generics.CreateAPIView):
@@ -48,5 +51,51 @@ class SaveFCMTokenView(APIView):
 
         return Response(
             {'message': 'FCM token saved successfully'},
+            status=status.HTTP_200_OK
+        )
+    
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        user = request.user
+
+        old_password = serializer.validated_data[
+            'old_password'
+        ]
+
+        new_password = serializer.validated_data[
+            'new_password'
+        ]
+
+        if not check_password(
+            old_password,
+            user.password
+        ):
+            return Response(
+                {
+                    'detail':
+                    'Mật khẩu hiện tại không đúng'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user.set_password(new_password)
+
+        user.save()
+
+        return Response(
+            {
+                'message':
+                'Đổi mật khẩu thành công'
+            },
             status=status.HTTP_200_OK
         )

@@ -272,6 +272,21 @@ class ApiService {
     );
   }
 
+  static Future<Response> changePassword({
+    required String oldPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    return dio.post(
+      '/auth/change-password/',
+      data: {
+        'old_password': oldPassword,
+        'new_password': newPassword,
+        'confirm_password': confirmPassword,
+      },
+    );
+  }
+
   static Future<List<dynamic>> getHouseholds() async {
     final response = await dio.get('/households/');
     return List<dynamic>.from(response.data);

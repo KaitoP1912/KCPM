@@ -8,6 +8,7 @@ from accounts.views import (
     RegisterView,
     SaveFCMTokenView,
     UserProfileView,
+    ChangePasswordView,
 )
 
 
@@ -21,4 +22,6 @@ urlpatterns = [
     path('profile/', UserProfileView.as_view()),
 
     path('save-fcm-token/', SaveFCMTokenView.as_view()),
+
+    path('change-password/',ChangePasswordView.as_view()),
 ]

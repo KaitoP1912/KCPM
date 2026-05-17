@@ -61,3 +61,31 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.avatar.url)
 
         return ''
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(
+        write_only=True
+    )
+
+    new_password = serializers.CharField(
+        write_only=True,
+        min_length=8
+    )
+
+    confirm_password = serializers.CharField(
+        write_only=True
+    )
+
+    def validate(self, attrs):
+        if (
+            attrs['new_password']
+            != attrs['confirm_password']
+        ):
+            raise serializers.ValidationError(
+                {
+                    'confirm_password':
+                    'Mật khẩu xác nhận không khớp'
+                }
+            )
+
+        return attrs
