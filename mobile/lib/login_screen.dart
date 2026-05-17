@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import 'app_theme.dart';
 import 'bottom_nav_screen.dart';
@@ -19,6 +20,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool isLoading = false;
   bool hidePassword = true;
+
+  bool get showAppleLogin {
+    if (kIsWeb) return false;
+
+    return defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   static const Color darkGreen = AppColors.primary;
   static const Color deepGreen = AppColors.primaryDark;
@@ -470,17 +477,19 @@ class _LoginScreenState extends State<LoginScreen> {
                   showMessage('Facebook Login sẽ mở rộng sau');
                 },
               ),
-              const SizedBox(width: 22),
-              buildSocialCircle(
-                icon: const Icon(
-                  Icons.apple_rounded,
-                  color: Colors.black,
-                  size: 34,
+              if (showAppleLogin) ...[
+                const SizedBox(width: 22),
+                buildSocialCircle(
+                  icon: const Icon(
+                    Icons.apple_rounded,
+                    color: Colors.black,
+                    size: 34,
+                  ),
+                  onTap: () {
+                    showMessage('Apple Login sẽ mở rộng sau');
+                  },
                 ),
-                onTap: () {
-                  showMessage('Apple Login sẽ mở rộng sau');
-                },
-              ),
+              ],
             ],
           ),
           SizedBox(height: compact ? 14 : 20),
