@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class ApiService {
   static const String apiHost = String.fromEnvironment(
@@ -467,5 +468,53 @@ class ApiService {
     );
 
     return Map<String, dynamic>.from(response.data);
+  }
+
+  static Future<void> loginWithGoogle() async {
+    final GoogleSignIn googleSignIn =
+        GoogleSignIn();
+
+    final googleUser =
+        await googleSignIn.signIn();
+
+    if (googleUser == null) {
+      throw Exception(
+        'Người dùng đã huỷ đăng nhập',
+      );
+    }
+
+    final googleAuth =
+        await googleUser.authentication;
+
+    final idToken =
+        googleAuth.idToken;
+
+    if (idToken == null) {
+      throw Exception(
+        'Không lấy được Google token',
+      );
+    }
+
+    final response = await dio.post(
+      '/auth/google-login/',
+      data: {
+        'token': idToken,
+      },
+    );
+
+    final access =
+        response.data['access'];
+
+    final refresh =
+        response.data['refresh'];
+
+    final email =
+        response.data['user']['email'];
+
+    await saveTokens(
+      access: access,
+      refresh: refresh,
+      email: email,
+    );
   }
 }

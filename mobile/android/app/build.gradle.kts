@@ -11,7 +11,7 @@ android {
     ndkVersion = flutter.ndkVersion
 
     defaultConfig {
-        applicationId = "com.example.my_firebase"
+        applicationId = "com.chungvi.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

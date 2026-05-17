@@ -7,12 +7,25 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:128851263812:android:99c8a3b857e61aae439711",
+        "mobilesdk_app_id": "1:128851263812:android:1989bff3f7234df2439711",
         "android_client_info": {
-          "package_name": "com.example.my_firebase"
+          "package_name": "com.chungvi.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "128851263812-k9jgft8lbdigld45lb5d1hjkcefjrha8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.chungvi.app",
+            "certificate_hash": "743edf59601be65a9d560f56d035d4ce9a8966b7"
+          }
+        },
+        {
+          "client_id": "128851263812-26cu67sslmrhtcge5e93u0pqgs274khp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCkkHl-Tfrm4sTXUGMoh-bRTVfcTbwc1Ys"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "128851263812-26cu67sslmrhtcge5e93u0pqgs274khp.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "128851263812-i2i7fmclkjv4f10qhi5od8bj9d36nta8.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.mobile"
+              }
+            }
+          ]
         }
       }
     }

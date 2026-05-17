@@ -74,6 +74,40 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> loginWithGoogle() async {
+    try {
+      setState(() {
+        isLoading = true;
+      });
+
+      await ApiService.loginWithGoogle();
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              const BottomNavScreen(),
+        ),
+      );
+    } catch (e) {
+      debugPrint(
+        'GOOGLE LOGIN ERROR: $e',
+      );
+
+      showMessage(
+        'Đăng nhập Google thất bại',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
   void showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -284,6 +318,44 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 24),
                   buildLoginButton(),
+                  const SizedBox(height: 14),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          isLoading
+                              ? null
+                              : loginWithGoogle,
+
+                      icon: Container(
+                        width: 24,
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          'G',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.red,
+                          ),
+                        ),
+                      ),
+
+                      label: const Text(
+                        'Tiếp tục với Google',
+                        style: TextStyle(
+                          fontWeight:
+                              FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 22),
                   buildRegisterHint(),
                 ],
