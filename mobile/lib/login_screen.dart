@@ -6,6 +6,7 @@ import 'bottom_nav_screen.dart';
 import 'register_screen.dart';
 import 'services/api_service.dart';
 import 'package:dio/dio.dart';
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -452,15 +453,19 @@ class _LoginScreenState extends State<LoginScreen> {
               onPressed: isLoading
                   ? null
                   : () {
-                      showMessage(
-                        'Tính năng quên mật khẩu sẽ làm sau',
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const ForgotPasswordScreen(),
+                        ),
                       );
                     },
               child: const Text(
                 'Quên mật khẩu?',
                 style: TextStyle(
-                  color: darkGreen,
-                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),

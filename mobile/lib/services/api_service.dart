@@ -293,6 +293,34 @@ class ApiService {
     );
   }
 
+  static Future<Response> forgotPassword({
+    required String email,
+  }) async {
+    return dio.post(
+      '/auth/forgot-password/',
+      data: {
+        'email': email,
+      },
+    );
+  }
+
+  static Future<Response> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    return dio.post(
+      '/auth/reset-password/',
+      data: {
+        'email': email,
+        'otp': otp,
+        'new_password': newPassword,
+        'confirm_password': confirmPassword,
+      },
+    );
+  }
+
   static Future<Response> changePassword({
     required String oldPassword,
     required String newPassword,
