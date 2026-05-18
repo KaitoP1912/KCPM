@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'services/api_service.dart';
+import 'widgets/app_empty_state.dart';
+import 'widgets/app_error_state.dart';
+import 'widgets/app_loading_state.dart';
 
 class ActivityScreen extends StatefulWidget {
   final String? householdId;
@@ -21,6 +24,9 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   bool isLoadingActivities = true;
   bool isLoadingNotifications = true;
+  
+  String? activityError;
+  String? notificationError;
 
   List<dynamic> activities = [];
   List<dynamic> notifications = [];
@@ -50,13 +56,18 @@ class _ActivityScreenState extends State<ActivityScreen>
   }
 
   Future<void> loadActivities() async {
+    if (!mounted) return;
+
     setState(() {
       isLoadingActivities = true;
+      activityError = null;
     });
 
     try {
       final data = isGroupOnly
-          ? await ApiService.getActivities(widget.householdId!)
+          ? await ApiService.getActivities(
+              widget.householdId!,
+            )
           : await ApiService.getAllActivities();
 
       if (!mounted) return;
@@ -64,6 +75,7 @@ class _ActivityScreenState extends State<ActivityScreen>
       setState(() {
         activities = data;
         isLoadingActivities = false;
+        activityError = null;
       });
     } catch (e) {
       debugPrint(e.toString());
@@ -71,14 +83,18 @@ class _ActivityScreenState extends State<ActivityScreen>
       if (!mounted) return;
 
       setState(() {
+        activityError = 'Không thể tải hoạt động';
         isLoadingActivities = false;
       });
     }
   }
 
   Future<void> loadNotifications() async {
+    if (!mounted) return;
+
     setState(() {
       isLoadingNotifications = true;
+      notificationError = null;
     });
 
     try {
@@ -89,6 +105,7 @@ class _ActivityScreenState extends State<ActivityScreen>
       setState(() {
         notifications = data;
         isLoadingNotifications = false;
+        notificationError = null;
       });
     } catch (e) {
       debugPrint(e.toString());
@@ -96,6 +113,7 @@ class _ActivityScreenState extends State<ActivityScreen>
       if (!mounted) return;
 
       setState(() {
+        notificationError = 'Không thể tải thông báo';
         isLoadingNotifications = false;
       });
     }
@@ -406,68 +424,58 @@ class _ActivityScreenState extends State<ActivityScreen>
     required Widget Function(dynamic item) builder,
     required String emptyTitle,
     required String emptyDescription,
+    required String? errorMessage,
+    required Future<void> Function() onRetry,
+    required IconData emptyIcon,
   }) {
     if (isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(),
+      return const AppLoadingState(
+        message: 'Đang tải dữ liệu...',
+      );
+    }
+
+    if (errorMessage != null) {
+      return AppErrorState(
+        message: errorMessage,
+        onRetry: onRetry,
       );
     }
 
     if (items.isEmpty) {
-      return buildEmptyState(
-        title: emptyTitle,
-        description: emptyDescription,
+      return RefreshIndicator(
+        onRefresh: refreshCurrent,
+        child: ListView(
+          physics:
+              const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height:
+                  MediaQuery.of(context).size.height *
+                  0.62,
+              child: AppEmptyState(
+                icon: emptyIcon,
+                title: emptyTitle,
+                message: emptyDescription,
+              ),
+            ),
+          ],
+        ),
       );
     }
 
     return RefreshIndicator(
       onRefresh: refreshCurrent,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 110),
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding:
+            const EdgeInsets.fromLTRB(20, 18, 20, 110),
         itemCount: items.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 14),
+        separatorBuilder: (context, index) =>
+            const SizedBox(height: 14),
         itemBuilder: (context, index) {
           return builder(items[index]);
         },
-      ),
-    );
-  }
-
-  Widget buildEmptyState({
-    required String title,
-    required String description,
-  }) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.notifications_none_rounded,
-              size: 64,
-              color: AppColors.textLight,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: AppColors.textDark,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.textLight,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -502,10 +510,12 @@ class _ActivityScreenState extends State<ActivityScreen>
             ),
           ),
           IconButton(
-            onPressed: () async {
-              await ApiService.markAllNotificationsAsRead();
-              await loadNotifications();
-            },
+            onPressed: isLoadingNotifications
+                ? null
+                : () async {
+                    await ApiService.markAllNotificationsAsRead();
+                    await loadNotifications();
+                  },
             icon: const Icon(Icons.done_all_rounded),
             tooltip: 'Đánh dấu đã đọc',
           ),
@@ -568,6 +578,9 @@ class _ActivityScreenState extends State<ActivityScreen>
                         buildList(
                           isLoading: isLoadingActivities,
                           items: activities,
+                          errorMessage: activityError,
+                          onRetry: loadActivities,
+                          emptyIcon: Icons.history_rounded,
                           builder: buildActivityCard,
                           emptyTitle: 'Chưa có hoạt động',
                           emptyDescription:
@@ -578,6 +591,9 @@ class _ActivityScreenState extends State<ActivityScreen>
                         buildList(
                           isLoading: isLoadingActivities,
                           items: activities,
+                          errorMessage: activityError,
+                          onRetry: loadActivities,
+                          emptyIcon: Icons.history_rounded,
                           builder: buildActivityCard,
                           emptyTitle: 'Chưa có hoạt động chung',
                           emptyDescription:
@@ -586,6 +602,10 @@ class _ActivityScreenState extends State<ActivityScreen>
                         buildList(
                           isLoading: isLoadingNotifications,
                           items: notifications,
+                          errorMessage: notificationError,
+                          onRetry: loadNotifications,
+                          emptyIcon:
+                              Icons.notifications_none_rounded,
                           builder: buildNotificationCard,
                           emptyTitle: 'Chưa có thông báo riêng',
                           emptyDescription:

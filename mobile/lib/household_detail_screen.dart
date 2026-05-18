@@ -8,6 +8,9 @@ import 'models/expense.dart';
 import 'models/household.dart';
 import 'services/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'widgets/app_empty_state.dart';
+import 'widgets/app_error_state.dart';
+import 'widgets/app_loading_state.dart';
 
 class HouseholdDetailScreen extends StatefulWidget {
   final Household household;
@@ -24,6 +27,7 @@ class HouseholdDetailScreen extends StatefulWidget {
 
 class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   bool isLoading = true;
+  String? errorMessage;
 
   List<Expense> expenses = [];
   List<Debt> debts = [];
@@ -44,25 +48,36 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Future<void> loadData() async {
+    if (!mounted) return;
+
     setState(() {
       isLoading = true;
+      errorMessage = null;
     });
 
-    final savedEmail = await ApiService.getSavedEmail();
-
-    if (savedEmail != null && savedEmail.isNotEmpty) {
-      currentUserEmail = savedEmail.trim().toLowerCase();
-    } else {
-      final profile = await ApiService.getProfile();
-      currentUserEmail = profile['email']?.toString().trim().toLowerCase() ?? '';
-    }
-
     try {
-      final expenseData = await ApiService.getHouseholdExpenses(
+      final savedEmail = await ApiService.getSavedEmail();
+
+      if (savedEmail != null && savedEmail.isNotEmpty) {
+        currentUserEmail =
+            savedEmail.trim().toLowerCase();
+      } else {
+        final profile = await ApiService.getProfile();
+
+        currentUserEmail = profile['email']
+                ?.toString()
+                .trim()
+                .toLowerCase() ??
+            '';
+      }
+
+      final expenseData =
+          await ApiService.getHouseholdExpenses(
         widget.household.id,
       );
 
-      final debtData = await ApiService.getHouseholdDebts(
+      final debtData =
+          await ApiService.getHouseholdDebts(
         widget.household.id,
       );
 
@@ -95,6 +110,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         debts = loadedDebts;
         totalExpense = total;
         isLoading = false;
+        errorMessage = null;
       });
     } catch (e) {
       debugPrint(e.toString());
@@ -102,15 +118,14 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
       if (!mounted) return;
 
       setState(() {
+        errorMessage = 'Không thể tải dữ liệu nhóm';
         isLoading = false;
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không thể tải dữ liệu nhóm'),
-        ),
-      );
     }
+  }
+
+  Future<void> refreshData() async {
+    await loadData();
   }
 
   Future<void> openAddExpenseScreen() async {
@@ -1102,6 +1117,25 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: AppLoadingState(
+          message: 'Đang tải dữ liệu nhóm...',
+        ),
+      );
+    }
+
+    if (errorMessage != null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: AppErrorState(
+          message: errorMessage!,
+          onRetry: loadData,
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -1146,26 +1180,39 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
           ),
         ),
       ),
-      body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
-          : RefreshIndicator(
-              onRefresh: loadData,
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  buildHeroCard(),
-                  const SizedBox(height: 30),
-                  buildMembersSection(),
-                  const SizedBox(height: 30),
-                  buildDebtSection(),
-                  const SizedBox(height: 30),
-                  buildExpenseSection(),
-                  const SizedBox(height: 120),
-                ],
-              ),
-            ),
+      body: RefreshIndicator(
+        onRefresh: refreshData,
+        child: ListView(
+          physics:
+              const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          children: [
+            buildHeroCard(),
+            const SizedBox(height: 30),
+            buildMembersSection(),
+            const SizedBox(height: 30),
+            buildDebtSection(),
+            const SizedBox(height: 30),
+            if (expenses.isEmpty)
+              SizedBox(
+                height:
+                    MediaQuery.of(context).size.height *
+                    0.42,
+                child: AppEmptyState(
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Chưa có khoản chi',
+                  message:
+                      'Thêm khoản chi đầu tiên để Chung Ví tự động tính toán công nợ cho nhóm.',
+                  buttonText: 'Thêm khoản chi',
+                  onPressed: openAddExpenseScreen,
+                ),
+              )
+            else
+              buildExpenseSection(),
+            const SizedBox(height: 120),
+          ],
+        ),
+      ),
     );
   }
 }
