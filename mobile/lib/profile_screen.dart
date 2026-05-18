@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'login_screen.dart';
 import 'services/api_service.dart';
+import 'widgets/app_empty_state.dart';
+import 'widgets/app_error_state.dart';
+import 'widgets/app_loading_state.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,6 +19,9 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool isLoading = true;
   bool isSaving = false;
+  bool isLoggingOut = false;
+
+  String? errorMessage;
 
   Map<String, dynamic> profile = {};
 
@@ -48,6 +54,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> loadProfile() async {
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
     try {
       final data = await ApiService.getProfile();
 
@@ -56,30 +69,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() {
         profile = data;
         isLoading = false;
+        errorMessage = null;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint(e.toString());
+
       if (!mounted) return;
 
       setState(() {
         isLoading = false;
+        errorMessage =
+            'Không thể tải thông tin tài khoản';
       });
-
-      showMessage('Không thể tải hồ sơ');
     }
   }
 
+  Future<void> refreshProfile() async {
+    await loadProfile();
+  }
+
   Future<void> logout() async {
-    await ApiService.logout();
+    if (isLoggingOut) return;
 
-    if (!mounted) return;
+    try {
+      setState(() {
+        isLoggingOut = true;
+      });
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const LoginScreen(),
-      ),
-      (route) => false,
-    );
+      await ApiService.logout();
+
+      if (!mounted) return;
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const LoginScreen(),
+        ),
+        (route) => false,
+      );
+    } catch (_) {
+      showMessage('Không thể đăng xuất');
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoggingOut = false;
+        });
+      }
+    }
   }
 
   Future<void> openChangePasswordDialog() async {
@@ -652,14 +688,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return SizedBox(
       height: 58,
       child: ElevatedButton.icon(
-        onPressed: logout,
+        onPressed: isLoggingOut ? null : logout,
         icon: const Icon(Icons.logout_rounded),
-        label: const Text(
-          'Đăng xuất',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
-        ),
+        label: isLoggingOut
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  color: Colors.white,
+                ),
+              )
+            : const Text(
+                'Đăng xuất',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.red,
           foregroundColor: Colors.white,
@@ -674,80 +719,120 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: AppLoadingState(
+          message: 'Đang tải hồ sơ...',
+        ),
+      );
+    }
+
+    if (errorMessage != null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: AppErrorState(
+          message: errorMessage!,
+          onRetry: loadProfile,
+        ),
+      );
+    }
+
+    if (profile.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: RefreshIndicator(
+          onRefresh: refreshProfile,
+          child: ListView(
+            physics:
+                const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(
+                height:
+                    MediaQuery.of(context).size.height *
+                    0.72,
+                child: const AppEmptyState(
+                  icon: Icons.person_off_rounded,
+                  title: 'Không có dữ liệu hồ sơ',
+                  message:
+                      'Thông tin tài khoản hiện chưa khả dụng.',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         titleSpacing: 20,
         title: const Text('Cá nhân'),
       ),
-      body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
-          : RefreshIndicator(
-              onRefresh: loadProfile,
-              child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [
-                  buildHeader(),
-                  const SizedBox(height: 28),
-                  buildSectionTitle('Thông tin cá nhân'),
-                  const SizedBox(height: 16),
-                  buildInfoTile(
-                    icon: Icons.badge_rounded,
-                    title: 'Họ và tên',
-                    value: valueOf('full_name'),
-                  ),
-                  buildInfoTile(
-                    icon: Icons.email_rounded,
-                    title: 'Email',
-                    value: valueOf('email'),
-                  ),
-                  buildInfoTile(
-                    icon: Icons.phone_rounded,
-                    title: 'Số điện thoại',
-                    value: valueOf('phone_number'),
-                  ),
-                  const SizedBox(height: 14),
-                  buildSectionTitle('Tài khoản ngân hàng'),
-                  const SizedBox(height: 16),
-                  buildInfoTile(
-                    icon: Icons.account_balance_rounded,
-                    title: 'Ngân hàng',
-                    value: valueOf('bank_name'),
-                  ),
-                  buildInfoTile(
-                    icon: Icons.credit_card_rounded,
-                    title: 'Số tài khoản',
-                    value: valueOf('bank_account_number'),
-                  ),
-                  buildInfoTile(
-                    icon: Icons.person_outline_rounded,
-                    title: 'Chủ tài khoản',
-                    value: valueOf('bank_account_holder'),
-                  ),
-                  const SizedBox(height: 14),
-                  if (!isGoogleAccount) ...[
-                    const SizedBox(height: 14),
-
-                    buildSectionTitle('Bảo mật'),
-
-                    const SizedBox(height: 16),
-
-                    buildActionTile(
-                      icon: Icons.lock_reset_rounded,
-                      title: 'Đổi mật khẩu',
-                      subtitle:
-                          'Cập nhật mật khẩu đăng nhập tài khoản',
-                      onTap: openChangePasswordDialog,
-                    ),
-                  ],
-                  const SizedBox(height: 14),
-                  buildLogoutButton(),
-                  const SizedBox(height: 120),
-                ],
-              ),
+      body: RefreshIndicator(
+        onRefresh: refreshProfile,
+        child: ListView(
+          physics:
+              const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          children: [
+            buildHeader(),
+            const SizedBox(height: 28),
+            buildSectionTitle('Thông tin cá nhân'),
+            const SizedBox(height: 16),
+            buildInfoTile(
+              icon: Icons.badge_rounded,
+              title: 'Họ và tên',
+              value: valueOf('full_name'),
             ),
+            buildInfoTile(
+              icon: Icons.email_rounded,
+              title: 'Email',
+              value: valueOf('email'),
+            ),
+            buildInfoTile(
+              icon: Icons.phone_rounded,
+              title: 'Số điện thoại',
+              value: valueOf('phone_number'),
+            ),
+            const SizedBox(height: 14),
+            buildSectionTitle('Tài khoản ngân hàng'),
+            const SizedBox(height: 16),
+            buildInfoTile(
+              icon: Icons.account_balance_rounded,
+              title: 'Ngân hàng',
+              value: valueOf('bank_name'),
+            ),
+            buildInfoTile(
+              icon: Icons.credit_card_rounded,
+              title: 'Số tài khoản',
+              value: valueOf('bank_account_number'),
+            ),
+            buildInfoTile(
+              icon: Icons.person_outline_rounded,
+              title: 'Chủ tài khoản',
+              value: valueOf('bank_account_holder'),
+            ),
+            const SizedBox(height: 14),
+            if (!isGoogleAccount) ...[
+              const SizedBox(height: 14),
+              buildSectionTitle('Bảo mật'),
+              const SizedBox(height: 16),
+              buildActionTile(
+                icon: Icons.lock_reset_rounded,
+                title: 'Đổi mật khẩu',
+                subtitle:
+                    'Cập nhật mật khẩu đăng nhập tài khoản',
+                onTap: openChangePasswordDialog,
+              ),
+            ],
+            const SizedBox(height: 14),
+            buildLogoutButton(),
+            const SizedBox(height: 120),
+          ],
+        ),
+      ),
     );
   }
 }

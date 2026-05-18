@@ -15,13 +15,22 @@ class BottomNavScreen extends StatefulWidget {
 
 class _BottomNavScreenState extends State<BottomNavScreen> {
   int currentIndex = 0;
-  int homeReloadKey = 0;
 
   int unreadNotificationCount = 0;
+  late final List<Widget> screens;
 
   @override
   void initState() {
     super.initState();
+
+    screens = const [
+      HomeScreen(),
+      ActivityScreen(),
+      AddExpenseEntryScreen(),
+      DebtOverviewScreen(),
+      ProfileScreen(),
+    ];
+
     loadUnreadCount();
   }
 
@@ -37,13 +46,6 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
     } catch (_) {}
   }
 
-  void goHomeAndReload() {
-    setState(() {
-      homeReloadKey++;
-      currentIndex = 0;
-    });
-  }
-
   Future<void> changeTab(int index) async {
     setState(() {
       currentIndex = index;
@@ -56,19 +58,12 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screens = [
-      HomeScreen(key: ValueKey(homeReloadKey)),
-      const ActivityScreen(),
-      const AddExpenseEntryScreen(),
-      const DebtOverviewScreen(),
-      const ProfileScreen(),
-    ];
 
     return Scaffold(
       extendBody: true,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        child: screens[currentIndex],
+      body: IndexedStack(
+        index: currentIndex,
+        children: screens,
       ),
       bottomNavigationBar: SafeArea(
         top: false,
