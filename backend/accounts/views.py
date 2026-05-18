@@ -636,7 +636,12 @@ class GoogleLoginView(APIView):
 
             if created:
                 user.set_unusable_password()
-                user.save()
+
+            user.full_name = user.full_name or full_name
+            user.auth_provider = 'google'
+            user.email_verified = True
+            user.is_active = True
+            user.save()
 
             refresh = RefreshToken.for_user(user)
 
