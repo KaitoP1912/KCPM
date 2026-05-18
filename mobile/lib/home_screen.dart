@@ -5,6 +5,9 @@ import 'create_household_screen.dart';
 import 'household_detail_screen.dart';
 import 'models/household.dart';
 import 'services/api_service.dart';
+import 'widgets/app_empty_state.dart';
+import 'widgets/app_error_state.dart';
+import 'widgets/app_loading_state.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,6 +28,7 @@ class _HouseholdDebtResult {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
+  String? errorMessage;
 
   List<Household> households = [];
   List<Household> filteredHouseholds = [];
@@ -54,7 +58,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> loadData() async {
     try {
-      setState(() => isLoading = true);
+      setState(() {
+        isLoading = true;
+        errorMessage = null;
+      });
 
       final savedEmail = await ApiService.getSavedEmail();
       currentEmail = savedEmail ?? '';
@@ -137,19 +144,17 @@ class _HomeScreenState extends State<HomeScreen> {
         totalReceive = receive;
         isLoading = false;
       });
-    } catch (e) {
-      debugPrint(e.toString());
+      } catch (e) {
+        debugPrint(e.toString());
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      setState(() => isLoading = false);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không thể tải dữ liệu trang chủ'),
-        ),
-      );
-    }
+        setState(() {
+          errorMessage =
+              'Không thể tải dữ liệu trang chủ';
+          isLoading = false;
+        });
+      }
   }
 
   void filterHouseholds() {
@@ -600,8 +605,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> refreshData() async {
+    await loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: AppLoadingState(
+          message: 'Đang tải dữ liệu...',
+        ),
+      );
+    }
+
+    if (errorMessage != null) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: AppErrorState(
+          message: errorMessage!,
+          onRetry: loadData,
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton(
@@ -615,31 +643,55 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: SafeArea(
-        child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
-            : RefreshIndicator(
-                onRefresh: loadData,
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    buildHeader(),
-                    const SizedBox(height: 26),
-                    buildSummaryCard(),
-                    const SizedBox(height: 24),
-                    buildSearchBar(),
-                    const SizedBox(height: 28),
-                    buildSectionTitle(),
-                    const SizedBox(height: 16),
-                    if (filteredHouseholds.isEmpty)
-                      buildEmptyState()
-                    else
-                      ...filteredHouseholds.map(buildHouseholdCard),
-                    const SizedBox(height: 120),
-                  ],
+        child: RefreshIndicator(
+          onRefresh: refreshData,
+          child: ListView(
+            physics:
+                const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            children: [
+              buildHeader(),
+              const SizedBox(height: 26),
+              buildSummaryCard(),
+              const SizedBox(height: 24),
+              buildSearchBar(),
+              const SizedBox(height: 28),
+              buildSectionTitle(),
+              const SizedBox(height: 16),
+              if (households.isEmpty)
+                SizedBox(
+                  height:
+                      MediaQuery.of(context).size.height *
+                      0.52,
+                  child: AppEmptyState(
+                    icon: Icons.groups_rounded,
+                    title: 'Chưa có nhóm nào',
+                    message:
+                        'Tạo nhóm đầu tiên để bắt đầu chia chi tiêu cùng bạn bè hoặc gia đình.',
+                    buttonText: 'Tạo nhóm',
+                    onPressed: openCreateHousehold,
+                  ),
+                )
+              else if (filteredHouseholds.isEmpty)
+                SizedBox(
+                  height:
+                      MediaQuery.of(context).size.height *
+                      0.42,
+                  child: AppEmptyState(
+                    icon: Icons.search_off_rounded,
+                    title: 'Không tìm thấy nhóm',
+                    message:
+                        'Thử nhập từ khóa khác để tìm nhóm bạn cần.',
+                  ),
+                )
+              else
+                ...filteredHouseholds.map(
+                  buildHouseholdCard,
                 ),
-              ),
+              const SizedBox(height: 120),
+            ],
+          ),
+        ),
       ),
     );
   }
