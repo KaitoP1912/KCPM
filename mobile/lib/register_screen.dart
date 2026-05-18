@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'login_screen.dart';
 import 'services/api_service.dart';
+import 'verify_register_otp_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -88,29 +89,59 @@ class _RegisterScreenState
       if (!mounted) return;
 
       showMessage(
-        'Đăng ký thành công. Vui lòng đăng nhập.',
+        'Đăng ký thành công. Vui lòng nhập OTP.',
       );
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
+          builder: (_) => VerifyRegisterOTPScreen(
+            email: email,
+          ),
         ),
       );
     } on DioException catch (e) {
+      debugPrint(
+        'REGISTER ERROR: ${e.response?.data}',
+      );
+
       final data = e.response?.data;
 
       if (data is Map) {
-        final firstError = data.values.isNotEmpty
-            ? data.values.first.toString()
-            : 'Đăng ký thất bại';
+        if (data['detail'] != null) {
+          showMessage(
+            data['detail'].toString(),
+          );
+        } else if (data['email'] != null) {
+          final emailError = data['email'];
 
-        showMessage(firstError);
+          if (emailError is List &&
+              emailError.isNotEmpty) {
+            showMessage(
+              emailError.first.toString(),
+            );
+          } else {
+            showMessage(
+              emailError.toString(),
+            );
+          }
+        } else {
+          final firstError =
+              data.values.isNotEmpty
+                  ? data.values.first.toString()
+                  : 'Đăng ký thất bại';
+
+          showMessage(firstError);
+        }
       } else {
         showMessage('Đăng ký thất bại');
       }
-    } catch (_) {
-      showMessage('Không thể kết nối máy chủ');
+    } catch (e) {
+      debugPrint('REGISTER ERROR: $e');
+
+      showMessage(
+        'Không thể kết nối máy chủ',
+      );
     } finally {
       if (mounted) {
         setState(() {

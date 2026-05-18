@@ -5,6 +5,7 @@ import 'app_theme.dart';
 import 'bottom_nav_screen.dart';
 import 'register_screen.dart';
 import 'services/api_service.dart';
+import 'package:dio/dio.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -75,9 +76,19 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => const BottomNavScreen(),
         ),
       );
+    } on DioException catch (e) {
+      debugPrint('LOGIN ERROR: $e');
+
+      final data = e.response?.data;
+
+      if (data is Map && data['detail'] != null) {
+        showMessage(data['detail'].toString());
+      } else {
+        showMessage('Email hoặc mật khẩu không đúng');
+      }
     } catch (e) {
       debugPrint('LOGIN ERROR: $e');
-      showMessage('Đăng nhập thất bại');
+      showMessage('Không thể kết nối máy chủ');
     } finally {
       if (mounted) {
         setState(() => isLoading = false);

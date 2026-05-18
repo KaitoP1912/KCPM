@@ -25,7 +25,14 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         email = value.lower().strip()
 
-        if User.objects.filter(email=email).exists():
+        existing_user = User.objects.filter(
+            email=email
+        ).first()
+
+        if (
+            existing_user and
+            existing_user.email_verified
+        ):
             raise serializers.ValidationError(
                 'Email đã tồn tại'
             )

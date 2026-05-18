@@ -130,7 +130,19 @@ class RegisterView(generics.CreateAPIView):
             raise_exception=True
         )
 
-        user = serializer.save()
+        email = serializer.validated_data[
+            'email'
+        ]
+
+        existing_user = User.objects.filter(
+            email=email,
+            email_verified=False,
+        ).first()
+
+        if existing_user:
+            user = existing_user
+        else:
+            user = serializer.save()
 
         otp = generate_otp()
 
