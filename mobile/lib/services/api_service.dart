@@ -269,6 +269,30 @@ class ApiService {
     );
   }
 
+  static Future<Response> verifyRegisterOTP({
+    required String email,
+    required String otp,
+  }) async {
+    return dio.post(
+      '/auth/verify-register-otp/',
+      data: {
+        'email': email,
+        'otp': otp,
+      },
+    );
+  }
+
+  static Future<Response> resendRegisterOTP({
+    required String email,
+  }) async {
+    return dio.post(
+      '/auth/resend-register-otp/',
+      data: {
+        'email': email,
+      },
+    );
+  }
+
   static Future<Response> changePassword({
     required String oldPassword,
     required String newPassword,

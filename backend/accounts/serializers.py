@@ -6,7 +6,10 @@ User = get_user_model()
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(
+        write_only=True,
+        min_length=8
+    )
 
     class Meta:
         model = User
@@ -19,14 +22,42 @@ class RegisterSerializer(serializers.ModelSerializer):
             'password',
         ]
 
+    def validate_email(self, value):
+        email = value.lower().strip()
+
+        if User.objects.filter(email=email).exists():
+            raise serializers.ValidationError(
+                'Email đã tồn tại'
+            )
+
+        return email
+
     def create(self, validated_data):
         password = validated_data.pop('password')
 
-        user = User(**validated_data)
+        user = User(
+            **validated_data,
+            is_active=False,
+            email_verified=False,
+        )
+
         user.set_password(password)
         user.save()
 
         return user
+
+
+class VerifyRegisterOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    otp = serializers.CharField(
+        min_length=6,
+        max_length=6
+    )
+
+
+class ResendRegisterOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -64,6 +95,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
         return ''
 
+
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(
         write_only=True
@@ -79,10 +111,7 @@ class ChangePasswordSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
-        if (
-            attrs['new_password']
-            != attrs['confirm_password']
-        ):
+        if attrs['new_password'] != attrs['confirm_password']:
             raise serializers.ValidationError(
                 {
                     'confirm_password':
@@ -91,16 +120,13 @@ class ChangePasswordSerializer(serializers.Serializer):
             )
 
         return attrs
-    
-class ForgotPasswordRequestSerializer(
-    serializers.Serializer
-):
+
+
+class ForgotPasswordRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 
-class ResetPasswordSerializer(
-    serializers.Serializer
-):
+class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     otp = serializers.CharField(
@@ -118,10 +144,7 @@ class ResetPasswordSerializer(
     )
 
     def validate(self, attrs):
-        if (
-            attrs['new_password']
-            != attrs['confirm_password']
-        ):
+        if attrs['new_password'] != attrs['confirm_password']:
             raise serializers.ValidationError(
                 {
                     'confirm_password':
