@@ -1,8 +1,8 @@
 import 'dart:async';
 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class ApiService {
@@ -22,95 +22,20 @@ class ApiService {
   static final Dio dio = Dio(
     BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      sendTimeout: const Duration(seconds: 10),
+      connectTimeout:
+          const Duration(seconds: 15),
+      receiveTimeout:
+          const Duration(seconds: 15),
+      sendTimeout:
+          const Duration(seconds: 15),
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type':
+            'application/json',
       },
     ),
   );
 
   static Future<bool>? _refreshTokenFuture;
-
-  static Future<void> init() async {
-    await loadToken();
-
-    dio.interceptors.clear();
-
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) async {
-          final access = await getAccessToken();
-
-          if (access != null && access.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $access';
-          }
-
-          return handler.next(options);
-        },
-        onError: (error, handler) async {
-          final statusCode = error.response?.statusCode;
-          final requestOptions = error.requestOptions;
-
-          final isAuthApi =
-              requestOptions.path.contains('/auth/login/') ||
-              requestOptions.path.contains('/auth/register/') ||
-              requestOptions.path.contains('/auth/refresh/');
-
-          final alreadyRetried =
-              requestOptions.extra['alreadyRetried'] == true;
-
-          if (statusCode == 401 && !isAuthApi && !alreadyRetried) {
-            final refreshed = await _refreshTokenSafely();
-
-            if (refreshed) {
-              try {
-                final access = await getAccessToken();
-
-                final retryOptions = Options(
-                  method: requestOptions.method,
-                  headers: {
-                    ...requestOptions.headers,
-                    if (access != null && access.isNotEmpty)
-                      'Authorization': 'Bearer $access',
-                  },
-                  responseType: requestOptions.responseType,
-                  contentType: requestOptions.contentType,
-                  followRedirects: requestOptions.followRedirects,
-                  validateStatus: requestOptions.validateStatus,
-                  receiveDataWhenStatusError:
-                      requestOptions.receiveDataWhenStatusError,
-                  extra: {
-                    ...requestOptions.extra,
-                    'alreadyRetried': true,
-                  },
-                );
-
-                final response = await dio.request<dynamic>(
-                  requestOptions.path,
-                  data: requestOptions.data,
-                  queryParameters: requestOptions.queryParameters,
-                  options: retryOptions,
-                  cancelToken: requestOptions.cancelToken,
-                  onSendProgress: requestOptions.onSendProgress,
-                  onReceiveProgress: requestOptions.onReceiveProgress,
-                );
-
-                return handler.resolve(response);
-              } catch (e) {
-                return handler.next(error);
-              }
-            }
-
-            await logout();
-          }
-
-          return handler.next(error);
-        },
-      ),
-    );
-  }
 
   static Future<bool> _refreshTokenSafely() async {
     _refreshTokenFuture ??= refreshAccessToken();
@@ -152,6 +77,124 @@ class ApiService {
   static Future<String?> getSavedEmail() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('user_email');
+  }
+
+  static Future<void> init() async {
+    await loadToken();
+
+    dio.interceptors.clear();
+
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (
+          options,
+          handler,
+        ) async {
+          final access =
+              await getAccessToken();
+
+          if (access != null &&
+              access.isNotEmpty) {
+            options.headers[
+                    'Authorization'] =
+                'Bearer $access';
+          }
+
+          return handler.next(
+            options,
+          );
+        },
+        onError: (
+          error,
+          handler,
+        ) async {
+          final statusCode =
+              error.response
+                  ?.statusCode;
+
+          final requestOptions =
+              error.requestOptions;
+
+          final isAuthApi =
+              requestOptions.path
+                      .contains(
+                    '/auth/login/',
+                  ) ||
+                  requestOptions.path
+                      .contains(
+                    '/auth/register/',
+                  ) ||
+                  requestOptions.path
+                      .contains(
+                    '/auth/refresh/',
+                  );
+
+          final alreadyRetried =
+              requestOptions.extra['alreadyRetried'] ==
+                  true;
+
+          if (
+            statusCode == 401 &&
+            !isAuthApi &&
+            !alreadyRetried
+          ) {
+            final refreshed =
+                await _refreshTokenSafely();
+
+            if (refreshed) {
+              try {
+                final access =
+                    await getAccessToken();
+
+                final retryResponse =
+                    await dio.fetch<
+                        dynamic>(
+                  requestOptions
+                      .copyWith(
+                    headers: {
+                      ...requestOptions
+                          .headers,
+                      if (access !=
+                          null)
+                        'Authorization':
+                            'Bearer $access',
+                    },
+                    extra: {
+                      ...requestOptions
+                          .extra,
+                      'alreadyRetried':
+                          true,
+                    },
+                  ),
+                );
+
+                return handler.resolve(
+                  retryResponse,
+                );
+              } catch (_) {
+                return handler.next(error);
+              }
+            } else {
+              await logout();
+            }
+          }
+
+          return handler.reject(
+            DioException(
+              requestOptions:
+                  requestOptions,
+              response:
+                  error.response,
+              type: error.type,
+              error:
+                  parseDioException(
+                error,
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   static Future<void> loadToken() async {
@@ -573,5 +616,50 @@ class ApiService {
       refresh: refresh,
       email: email,
     );
+  }
+
+  static String parseDioException(
+    DioException error,
+  ) {
+    if (
+      error.type ==
+              DioExceptionType
+                  .connectionTimeout ||
+          error.type ==
+              DioExceptionType
+                  .receiveTimeout ||
+          error.type ==
+              DioExceptionType
+                  .sendTimeout
+    ) {
+      return 'Kết nối quá chậm. Vui lòng thử lại.';
+    }
+
+    if (error.type ==
+        DioExceptionType
+            .connectionError) {
+      return 'Không có kết nối mạng.';
+    }
+
+    final statusCode =
+        error.response?.statusCode;
+
+    if (statusCode == 401) {
+      return 'Phiên đăng nhập đã hết hạn.';
+    }
+
+    if (statusCode == 403) {
+      return 'Bạn không có quyền thực hiện thao tác này.';
+    }
+
+    if (statusCode == 404) {
+      return 'Không tìm thấy dữ liệu.';
+    }
+
+    if (statusCode == 500) {
+      return 'Máy chủ đang gặp sự cố.';
+    }
+
+    return 'Đã có lỗi xảy ra.';
   }
 }
