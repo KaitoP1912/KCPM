@@ -37,6 +37,7 @@ from rest_framework_simplejwt.serializers import (
 )
 
 import requests as pyrequests
+from django.core.mail import EmailMultiAlternatives
 
 User = get_user_model()
 
@@ -51,16 +52,69 @@ def generate_otp():
 
 
 def send_register_otp(email, otp):
-    send_mail(
-        subject='Xác thực email Chung Ví',
-        message=(
-            f'Mã OTP xác thực tài khoản của bạn là: {otp}\n\n'
-            'OTP có hiệu lực trong 10 phút.'
-        ),
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[email],
-        fail_silently=False,
+    subject = 'Mã OTP xác thực tài khoản Chung Ví'
+
+    text_content = (
+        f'Mã OTP xác thực tài khoản của bạn là: {otp}\n\n'
+        'OTP có hiệu lực trong 10 phút.'
     )
+
+    html_content = f"""
+    <div style="margin:0;padding:0;background:#f3f7f6;font-family:Arial,sans-serif;">
+      <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+        <div style="background:#ffffff;border-radius:20px;padding:32px;border:1px solid #e5eeee;">
+          <div style="text-align:center;margin-bottom:24px;">
+            <h1 style="margin:0;color:#0f8f6f;font-size:28px;font-weight:800;">
+              Chung Ví
+            </h1>
+            <p style="margin:8px 0 0;color:#6b7280;font-size:14px;">
+              Chia tiền nhóm dễ dàng hơn
+            </p>
+          </div>
+
+          <h2 style="margin:0 0 12px;color:#111827;font-size:22px;">
+            Xác thực email của bạn
+          </h2>
+
+          <p style="margin:0 0 20px;color:#4b5563;font-size:15px;line-height:1.6;">
+            Cảm ơn bạn đã đăng ký Chung Ví. Vui lòng nhập mã OTP bên dưới để hoàn tất tạo tài khoản.
+          </p>
+
+          <div style="text-align:center;margin:28px 0;">
+            <div style="display:inline-block;background:#ecfdf5;color:#047857;
+                        font-size:34px;font-weight:800;letter-spacing:8px;
+                        padding:18px 28px;border-radius:16px;border:1px solid #bbf7d0;">
+              {otp}
+            </div>
+          </div>
+
+          <p style="margin:0;color:#4b5563;font-size:15px;line-height:1.6;">
+            Mã OTP có hiệu lực trong <strong>10 phút</strong>. Không chia sẻ mã này cho bất kỳ ai.
+          </p>
+
+          <div style="margin-top:28px;padding-top:20px;border-top:1px solid #e5eeee;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.5;">
+              Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+
+    email_message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_content,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[email],
+    )
+
+    email_message.attach_alternative(
+        html_content,
+        "text/html",
+    )
+
+    email_message.send()
 
 
 class RegisterView(generics.CreateAPIView):
