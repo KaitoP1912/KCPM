@@ -8,6 +8,7 @@ import 'services/api_service.dart';
 import 'widgets/app_empty_state.dart';
 import 'widgets/app_error_state.dart';
 import 'widgets/app_loading_state.dart';
+import 'join_household_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -187,6 +188,18 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => const CreateHouseholdScreen(),
+      ),
+    );
+
+    await loadData();
+  }
+
+  Future<void> openJoinHousehold() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            const JoinHouseholdScreen(),
       ),
     );
 
@@ -632,15 +645,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton(
-        elevation: 0,
-        backgroundColor: AppColors.primary,
-        onPressed: openCreateHousehold,
-        child: const Icon(
-          Icons.add_rounded,
-          color: Colors.white,
-          size: 30,
-        ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'join_group',
+            onPressed: openJoinHousehold,
+            backgroundColor: Colors.white,
+            foregroundColor: AppColors.primary,
+            icon: const Icon(
+              Icons.group_add_rounded,
+            ),
+            label: const Text(
+              'Join nhóm',
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          FloatingActionButton.extended(
+            heroTag: 'create_group',
+            onPressed: openCreateHousehold,
+            icon: const Icon(Icons.add),
+            label: const Text('Tạo nhóm'),
+          ),
+        ],
       ),
       body: SafeArea(
         child: RefreshIndicator(

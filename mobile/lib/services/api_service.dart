@@ -662,4 +662,26 @@ class ApiService {
 
     return 'Đã có lỗi xảy ra.';
   }
+
+  static Future<Map<String, dynamic>>
+      joinHousehold({
+    required String inviteCode,
+  }) async {
+    try {
+      final response = await dio.post(
+        '/households/join/',
+        data: {
+          'invite_code': inviteCode,
+        },
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tham gia nhóm';
+    }
+  }
 }

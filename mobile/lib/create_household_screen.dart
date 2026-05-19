@@ -34,8 +34,17 @@ class _CreateHouseholdScreenState extends State<CreateHouseholdScreen> {
     final name = nameController.text.trim();
     final description = descriptionController.text.trim();
 
+    if (isLoading) {
+      return;
+    }
+
     if (name.isEmpty) {
       showMessage('Nhập tên nhóm');
+      return;
+    }
+
+    if (name.length < 3) {
+      showMessage('Tên nhóm tối thiểu 3 ký tự');
       return;
     }
 

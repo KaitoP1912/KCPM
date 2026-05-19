@@ -421,6 +421,40 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(
+                          alpha: 0.14,
+                        ),
+                        borderRadius:
+                            BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.key_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+
+                          const SizedBox(width: 8),
+
+                          Text(
+                            'Mã mời: ${widget.household.inviteCode}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
                     Text(
                       widget.household.description.isEmpty
                           ? 'Nhóm chia tiền'
