@@ -1,33 +1,48 @@
-from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated
+from django.db import transaction
+
+from rest_framework import generics
+from rest_framework import status
+
+from rest_framework.permissions import (
+    IsAuthenticated,
+)
+
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from households.models import Activity, Household, HouseholdMember
+from households.models import (
+    Activity,
+    Household,
+    HouseholdMember,
+)
+
 from households.serializers import (
     ActivitySerializer,
-    AddHouseholdMemberSerializer,
     HouseholdSerializer,
+    JoinHouseholdSerializer,
 )
-from notifications.models import Notification
-from notifications.services import create_notification
 
 
-def get_user_display_name(user):
-    return user.full_name or user.email
-
-
-class HouseholdListCreateView(generics.ListCreateAPIView):
+class HouseholdListCreateView(
+    generics.ListCreateAPIView
+):
     serializer_class = HouseholdSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Household.objects.filter(
+            is_active=True,
             members__user=self.request.user
+        ).prefetch_related(
+            'members',
+            'members__user',
         ).distinct()
 
+    @transaction.atomic
     def perform_create(self, serializer):
-        household = serializer.save(owner=self.request.user)
+        household = serializer.save(
+            owner=self.request.user
+        )
 
         HouseholdMember.objects.create(
             household=household,
@@ -35,150 +50,160 @@ class HouseholdListCreateView(generics.ListCreateAPIView):
             role=HouseholdMember.Role.OWNER
         )
 
+        Activity.objects.create(
+            household=household,
+            actor=self.request.user,
+            activity_type=(
+                Activity.ActivityType
+                .MEMBER_JOINED
+            ),
+            title=(
+                f'{self.request.user.email} '
+                f'đã tạo nhóm'
+            ),
+        )
 
-class HouseholdDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+class HouseholdDetailView(
+    generics.RetrieveAPIView
+):
     serializer_class = HouseholdSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Household.objects.filter(
+            is_active=True,
             members__user=self.request.user
+        ).prefetch_related(
+            'members',
+            'members__user',
         ).distinct()
 
 
-class AddHouseholdMemberView(APIView):
+class JoinHouseholdView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, pk):
+    @transaction.atomic
+    def post(self, request):
+        serializer = (
+            JoinHouseholdSerializer(
+                data=request.data
+            )
+        )
+
+        serializer.is_valid(
+            raise_exception=True
+        )
+
+        invite_code = serializer.validated_data[
+            'invite_code'
+        ]
+
         household = Household.objects.filter(
-            id=pk,
-            members__user=request.user
+            invite_code=invite_code,
+            is_active=True
         ).first()
 
         if not household:
             return Response(
-                {'detail': 'Không tìm thấy nhóm hoặc bạn không có quyền.'},
+                {
+                    'detail':
+                    'Mã mời không hợp lệ.'
+                },
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        current_member = HouseholdMember.objects.filter(
-            household=household,
-            user=request.user
-        ).first()
+        existing_member = (
+            HouseholdMember.objects.filter(
+                household=household,
+                user=request.user
+            ).exists()
+        )
 
-        if current_member.role not in [
-            HouseholdMember.Role.OWNER,
-            HouseholdMember.Role.ADMIN
-        ]:
+        if existing_member:
             return Response(
-                {'detail': 'Bạn không có quyền thêm thành viên.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        serializer = AddHouseholdMemberSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        user_to_add = serializer.user_to_add
-
-        if HouseholdMember.objects.filter(
-            household=household,
-            user=user_to_add
-        ).exists():
-            return Response(
-                {'detail': 'Người dùng này đã ở trong nhóm.'},
+                {
+                    'detail':
+                    'Bạn đã ở trong nhóm.'
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        member = HouseholdMember.objects.create(
+        HouseholdMember.objects.create(
             household=household,
-            user=user_to_add,
-            role=serializer.validated_data['role']
+            user=request.user,
+            role=HouseholdMember.Role.MEMBER
         )
-
-        added_name = get_user_display_name(user_to_add)
 
         Activity.objects.create(
             household=household,
             actor=request.user,
-            activity_type=Activity.ActivityType.MEMBER_JOINED,
-            title=f'{added_name} đã được thêm vào nhóm "{household.name}"',
-            metadata={
-                'household_id': str(household.id),
-                'added_user_id': user_to_add.id,
-                'added_user_email': user_to_add.email,
-            }
+            activity_type=(
+                Activity.ActivityType
+                .MEMBER_JOINED
+            ),
+            title=(
+                f'{request.user.email} '
+                f'đã tham gia nhóm'
+            ),
         )
 
-        create_notification(
-            recipient=user_to_add,
-            actor=request.user,
-            household=household,
-            notification_type=Notification.NotificationType.ADDED_TO_GROUP,
-            level=Notification.Level.PUSH,
-            title=f'Bạn đã được thêm vào nhóm "{household.name}"',
-            push_title='Chung Ví',
-            push_body=f'Bạn đã được thêm vào nhóm "{household.name}"',
-            metadata={
-                'household_id': str(household.id),
-                'added_by_user_id': request.user.id,
-            }
-        )
+        household.refresh_from_db()
 
-        old_members = HouseholdMember.objects.filter(
-            household=household
-        ).exclude(
-            user=user_to_add
-        )
-
-        for old_member in old_members:
-            create_notification(
-                recipient=old_member.user,
-                actor=request.user,
-                household=household,
-                notification_type=Notification.NotificationType.MEMBER_ADDED_TO_GROUP,
-                level=Notification.Level.IN_APP,
-                title=f'{added_name} đã được thêm vào nhóm "{household.name}"',
-                metadata={
-                    'household_id': str(household.id),
-                    'added_user_id': user_to_add.id,
+        response_serializer = (
+            HouseholdSerializer(
+                household,
+                context={
+                    'request': request
                 }
             )
+        )
 
         return Response(
             {
-                'id': member.id,
-                'email': member.user.email,
-                'role': member.role,
-                'message': 'Thêm thành viên thành công.'
+                'message':
+                'Tham gia nhóm thành công.',
+                'household':
+                response_serializer.data
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_200_OK
         )
 
 
-class ActivityListView(generics.ListAPIView):
+class ActivityListView(
+    generics.ListAPIView
+):
     serializer_class = ActivitySerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        household_id = self.kwargs['household_id']
+        household_id = self.kwargs[
+            'household_id'
+        ]
 
         return Activity.objects.filter(
             household_id=household_id,
-            household__members__user=self.request.user
+            household__members__user=(
+                self.request.user
+            )
         ).select_related(
             'actor',
             'household'
-        ).distinct().order_by('-created_at')
+        ).order_by('-created_at')
 
 
-class AllActivityListView(generics.ListAPIView):
+class AllActivityListView(
+    generics.ListAPIView
+):
     serializer_class = ActivitySerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Activity.objects.filter(
-            household__members__user=self.request.user
+            household__members__user=(
+                self.request.user
+            )
         ).select_related(
             'actor',
             'household'
-        ).distinct().order_by('-created_at')
+        ).order_by('-created_at')
