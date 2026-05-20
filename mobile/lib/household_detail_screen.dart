@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'widgets/app_empty_state.dart';
 import 'widgets/app_error_state.dart';
 import 'widgets/app_loading_state.dart';
+import 'package:flutter/services.dart';
 
 class HouseholdDetailScreen extends StatefulWidget {
   final Household household;
@@ -411,48 +412,99 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.household.name,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.7,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(
-                          alpha: 0.14,
-                        ),
-                        borderRadius:
-                            BorderRadius.circular(14),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.key_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-
-                          const SizedBox(width: 8),
-
-                          Text(
-                            'Mã mời: ${widget.household.inviteCode}',
+                    Row(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.household.name,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.7,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+
+                        const SizedBox(width: 12),
+
+                        InkWell(
+                          borderRadius:
+                              BorderRadius.circular(999),
+                          onTap: () async {
+                            await Clipboard.setData(
+                              ClipboardData(
+                                text:
+                                    widget.household.inviteCode,
+                              ),
+                            );
+
+                            if (!mounted) return;
+
+                            ScaffoldMessenger.of(context)
+                                .showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Đã copy mã mời',
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding:
+                                const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(
+                                alpha: 0.16,
+                              ),
+                              borderRadius:
+                                  BorderRadius.circular(999),
+                              border: Border.all(
+                                color: Colors.white.withValues(
+                                  alpha: 0.12,
+                                ),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize:
+                                  MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.key_rounded,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+
+                                const SizedBox(width: 6),
+
+                                Text(
+                                  widget.household.inviteCode,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight:
+                                        FontWeight.w800,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+
+                                const SizedBox(width: 6),
+
+                                const Icon(
+                                  Icons.copy_rounded,
+                                  color: Colors.white70,
+                                  size: 14,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
 
                     Text(

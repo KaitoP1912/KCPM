@@ -396,42 +396,84 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget buildSectionTitle() {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         const Text(
           'Danh sách nhóm',
           style: TextStyle(
-            color: AppColors.textDark,
-            fontSize: 22,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.5,
-          ),
-        ),
-        const Spacer(),
-        ElevatedButton.icon(
-          onPressed: openCreateHousehold,
-          icon: const Icon(
-            Icons.add_rounded,
-            size: 18,
-          ),
-          label: const Text('Tạo nhóm'),
-          style: ElevatedButton.styleFrom(
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 10,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          '${filteredHouseholds.length}',
-          style: const TextStyle(
-            color: AppColors.textLight,
+            fontSize: 20,
             fontWeight: FontWeight.w800,
           ),
+        ),
+
+        Row(
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: openCreateHousehold,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.add_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Tạo nhóm',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(width: 8),
+
+            InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: openJoinHousehold,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.group_add_rounded,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
+                    SizedBox(width: 6),
+                    Text(
+                      'Join',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -648,18 +690,6 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FloatingActionButton.extended(
-            heroTag: 'join_group',
-            onPressed: openJoinHousehold,
-            backgroundColor: Colors.white,
-            foregroundColor: AppColors.primary,
-            icon: const Icon(
-              Icons.group_add_rounded,
-            ),
-            label: const Text(
-              'Join nhóm',
-            ),
-          ),
 
           const SizedBox(height: 12),
 
