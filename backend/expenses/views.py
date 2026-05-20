@@ -7,6 +7,7 @@ from expenses.serializers import (
     ExpenseListSerializer,
 )
 from collections import defaultdict
+from households.models import HouseholdMember
 
 class ExpenseCreateView(generics.CreateAPIView):
     queryset = Expense.objects.all()
@@ -20,8 +21,16 @@ class ExpenseListView(generics.ListAPIView):
     def get_queryset(self):
         household_id = self.kwargs['household_id']
 
+        if not HouseholdMember.objects.filter(
+            household_id=household_id,
+            user=self.request.user
+        ).exists():
+            return Expense.objects.none()
+
         return Expense.objects.filter(
             household_id=household_id
+        ).select_related(
+            'payer'
         ).order_by('-created_at')
 
 class DebtListView(generics.ListAPIView):

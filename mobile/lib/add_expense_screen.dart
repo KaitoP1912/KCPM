@@ -114,6 +114,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Future<void> createExpense() async {
+    if (isLoading) return;
+    
     final title = titleController.text.trim();
     final amount = parseAmount(amountController.text);
 

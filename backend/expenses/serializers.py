@@ -41,6 +41,16 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
         payer = attrs.get('payer')
         participants = attrs.get('participants', [])
 
+        request = self.context.get('request')
+
+        if not request or not HouseholdMember.objects.filter(
+            household=household,
+            user=request.user
+        ).exists():
+            raise serializers.ValidationError(
+                'Bạn không có quyền thêm khoản chi vào nhóm này.'
+            )
+
         if not participants:
             raise serializers.ValidationError(
                 'Vui lòng chọn ít nhất một người tham gia chia tiền.'
@@ -55,6 +65,11 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
             )
 
         participant_ids = [item['user_id'] for item in participants]
+
+        if len(participant_ids) != len(set(participant_ids)):
+            raise serializers.ValidationError(
+                'Danh sách người chia tiền bị trùng.'
+            )
 
         valid_member_count = HouseholdMember.objects.filter(
             household=household,
@@ -93,9 +108,18 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
             user = User.objects.get(id=item['user_id'])
             participant_users.append(user)
 
-        split_amount = Decimal(expense.amount / len(participant_users))
+        total_amount = int(expense.amount)
+        participant_count = len(participant_users)
 
-        for user in participant_users:
+        base_share = total_amount // participant_count
+        remainder = total_amount % participant_count
+
+        for index, user in enumerate(participant_users):
+            split_amount = Decimal(
+                base_share + (
+                    remainder if index == 0 else 0
+                )
+            )
             ExpenseParticipant.objects.create(
                 expense=expense,
                 user=user,
