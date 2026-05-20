@@ -6,7 +6,9 @@ from households.views import (
     AllActivityListView,
     HouseholdDetailView,
     HouseholdListCreateView,
+    HouseholdSummaryListView,
     JoinHouseholdView,
+    LeaveHouseholdView,
 )
 
 urlpatterns = [
@@ -26,6 +28,11 @@ urlpatterns = [
     ),
 
     path(
+        'summary/',
+        HouseholdSummaryListView.as_view(),
+    ),
+
+    path(
         '<uuid:pk>/',
         HouseholdDetailView.as_view(),
     ),
@@ -33,6 +40,11 @@ urlpatterns = [
     path(
         '<uuid:household_id>/members/add/',
         AddHouseholdMemberView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/leave/',
+        LeaveHouseholdView.as_view(),
     ),
 
     path(

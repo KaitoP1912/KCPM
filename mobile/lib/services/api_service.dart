@@ -383,6 +383,11 @@ class ApiService {
       final response = await dio.get('/households/');
       return List<dynamic>.from(response.data);
     }
+
+  static Future<List<dynamic>> getHouseholdSummaries() async {
+    final response = await dio.get('/households/summary/');
+    return List<dynamic>.from(response.data);
+  }
   
   static Future<Response> createHousehold({
     required String name,
@@ -395,6 +400,10 @@ class ApiService {
         'description': description ?? '',
       },
     );
+  }
+
+  static Future<void> leaveHousehold(String householdId) async {
+    await dio.post('/households/$householdId/leave/');
   }
 
   static Future<Map<String, dynamic>>

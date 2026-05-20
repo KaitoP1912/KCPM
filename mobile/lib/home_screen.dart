@@ -17,16 +17,6 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HouseholdDebtResult {
-  final String householdId;
-  final List<dynamic> debts;
-
-  _HouseholdDebtResult({
-    required this.householdId,
-    required this.debts,
-  });
-}
-
 class _HomeScreenState extends State<HomeScreen> {
   bool isLoading = true;
   String? errorMessage;
@@ -43,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final Map<String, double> groupOweMap = {};
   final Map<String, double> groupReceiveMap = {};
+  final Map<String, dynamic> householdSummaryMap = {};
 
   @override
   void initState() {
@@ -77,63 +68,40 @@ class _HomeScreenState extends State<HomeScreen> {
           )
           .toList();
 
-      final debtResults = await Future.wait(
-        loadedHouseholds.map((household) async {
-          try {
-            final debts = await ApiService.getHouseholdDebts(household.id);
-
-            return _HouseholdDebtResult(
-              householdId: household.id,
-              debts: debts,
-            );
-          } catch (_) {
-            return _HouseholdDebtResult(
-              householdId: household.id,
-              debts: [],
-            );
-          }
-        }),
-      );
+      final summaries =
+          await ApiService.getHouseholdSummaries();
 
       double owe = 0;
       double receive = 0;
 
       groupOweMap.clear();
       groupReceiveMap.clear();
+      householdSummaryMap.clear();
 
-      final me = currentEmail.toLowerCase();
+      for (final item in summaries) {
+        final summary =
+            Map<String, dynamic>.from(item);
 
-      for (final result in debtResults) {
-        double groupOwe = 0;
-        double groupReceive = 0;
+        final householdId =
+            summary['id']?.toString() ?? '';
 
-        for (final item in result.debts) {
-          final debt = Map<String, dynamic>.from(item);
+        final groupOwe = double.tryParse(
+              summary['total_owe']?.toString() ?? '0',
+            ) ??
+            0;
 
-          final amount = double.tryParse(
-                debt['amount']?.toString() ?? '0',
-              ) ??
-              0;
+        final groupReceive = double.tryParse(
+              summary['total_receive']?.toString() ?? '0',
+            ) ??
+            0;
 
-          final fromEmail =
-              debt['from_user_email']?.toString().toLowerCase() ?? '';
+        owe += groupOwe;
+        receive += groupReceive;
 
-          final toEmail =
-              debt['to_user_email']?.toString().toLowerCase() ?? '';
+        groupOweMap[householdId] = groupOwe;
+        groupReceiveMap[householdId] = groupReceive;
 
-          if (fromEmail == me) {
-            owe += amount;
-            groupOwe += amount;
-          }
-
-          if (toEmail == me) {
-            receive += amount;
-            groupReceive += amount;
-          }
-        }
-
-        groupOweMap[result.householdId] = groupOwe;
-        groupReceiveMap[result.householdId] = groupReceive;
+        householdSummaryMap[householdId] = summary;
       }
 
       if (!mounted) return;

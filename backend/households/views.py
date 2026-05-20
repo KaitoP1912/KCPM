@@ -21,6 +21,7 @@ from households.models import (
 from households.serializers import (
     ActivitySerializer,
     HouseholdSerializer,
+    HouseholdSummarySerializer,
     JoinHouseholdSerializer,
 )
 
@@ -67,6 +68,22 @@ class HouseholdListCreateView(
             ),
         )
 
+class HouseholdSummaryListView(
+    generics.ListAPIView
+):
+    serializer_class = HouseholdSummarySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Household.objects.filter(
+            is_active=True,
+            members__user=self.request.user
+        ).prefetch_related(
+            'members',
+            'expenses',
+            'debts',
+            'activities',
+        ).distinct().order_by('-updated_at')
 
 class HouseholdDetailView(
     generics.RetrieveAPIView
@@ -224,8 +241,15 @@ class AddHouseholdMemberView(APIView):
             id=household_id,
             is_active=True,
             members__user=request.user,
-            members__role=HouseholdMember.Role.OWNER,
         ).first()
+
+        if not household:
+            return Response(
+                {
+                    'detail': 'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         user = User.objects.filter(
             email__iexact=email

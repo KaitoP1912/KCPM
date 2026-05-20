@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from django.db.models import Sum
 
 from households.models import (
     Activity,
@@ -135,3 +136,93 @@ class ActivitySerializer(
             obj.actor.full_name
             or obj.actor.email
         )
+    
+class HouseholdSummarySerializer(
+    serializers.ModelSerializer
+):
+    avatar_url = serializers.SerializerMethodField()
+
+    member_count = serializers.SerializerMethodField()
+
+    expense_count = serializers.SerializerMethodField()
+
+    total_owe = serializers.SerializerMethodField()
+
+    total_receive = serializers.SerializerMethodField()
+
+    latest_activity = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Household
+
+        fields = [
+            'id',
+            'name',
+            'avatar_url',
+
+            'member_count',
+            'expense_count',
+
+            'total_owe',
+            'total_receive',
+
+            'latest_activity',
+
+            'updated_at',
+        ]
+
+    def get_avatar_url(self, obj):
+        request = self.context.get('request')
+
+        if obj.avatar and request:
+            return request.build_absolute_uri(
+                obj.avatar.url
+            )
+
+        return ''
+
+    def get_member_count(self, obj):
+        return obj.members.count()
+
+    def get_expense_count(self, obj):
+        return obj.expenses.count()
+
+    def get_total_owe(self, obj):
+        request = self.context.get('request')
+
+        if not request:
+            return 0
+
+        total = obj.debts.filter(
+            from_user=request.user,
+            is_paid=False,
+        ).aggregate(
+            total=Sum('amount')
+        )['total']
+
+        return total or 0
+
+    def get_total_receive(self, obj):
+        request = self.context.get('request')
+
+        if not request:
+            return 0
+
+        total = obj.debts.filter(
+            to_user=request.user,
+            is_paid=False,
+        ).aggregate(
+            total=Sum('amount')
+        )['total']
+
+        return total or 0
+
+    def get_latest_activity(self, obj):
+        latest = obj.activities.order_by(
+            '-created_at'
+        ).first()
+
+        if not latest:
+            return ''
+
+        return latest.title
