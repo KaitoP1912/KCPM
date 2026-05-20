@@ -227,15 +227,6 @@ class AddHouseholdMemberView(APIView):
             members__role=HouseholdMember.Role.OWNER,
         ).first()
 
-        if not household:
-            return Response(
-                {
-                    'detail':
-                    'Chỉ chủ nhóm mới được thêm thành viên.'
-                },
-                status=status.HTTP_403_FORBIDDEN
-            )
-
         user = User.objects.filter(
             email__iexact=email
         ).first()
@@ -348,3 +339,74 @@ class AllActivityListView(
             'actor',
             'household'
         ).order_by('-created_at')
+
+class LeaveHouseholdView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, household_id):
+        household = Household.objects.select_for_update().filter(
+            id=household_id,
+            is_active=True,
+            members__user=request.user,
+        ).first()
+
+        if not household:
+            return Response(
+                {
+                    'detail': 'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        membership = HouseholdMember.objects.select_for_update().filter(
+            household=household,
+            user=request.user,
+        ).first()
+
+        if not membership:
+            return Response(
+                {
+                    'detail': 'Bạn không thuộc nhóm này.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        member_count = HouseholdMember.objects.filter(
+            household=household
+        ).count()
+
+        if (
+            membership.role == HouseholdMember.Role.OWNER
+            and member_count > 1
+        ):
+            return Response(
+                {
+                    'detail': 'Chủ nhóm không thể rời khi nhóm còn thành viên khác.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        Activity.objects.create(
+            household=household,
+            actor=request.user,
+            activity_type=Activity.ActivityType.MEMBER_JOINED,
+            title=f'{request.user.email} đã rời nhóm',
+            metadata={
+                'action': 'member_left',
+                'user_email': request.user.email,
+            },
+        )
+
+        membership.delete()
+
+        if member_count == 1:
+            household.is_active = False
+            household.save(update_fields=['is_active', 'updated_at'])
+
+        return Response(
+            {
+                'message': 'Bạn đã rời nhóm.'
+            },
+            status=status.HTTP_200_OK
+        )

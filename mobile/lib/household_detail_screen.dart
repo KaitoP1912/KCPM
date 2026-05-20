@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'activity_screen.dart';
 import 'add_expense_screen.dart';
 import 'app_theme.dart';
 import 'models/debt.dart';
@@ -31,6 +30,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
   bool isLoading = true;
   bool isAddingMember = false;
+  bool isLeavingHousehold = false;
   String? errorMessage;
 
   List<Expense> expenses = [];
@@ -294,6 +294,70 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
     controller.dispose();
   }
+
+  Future<void> confirmLeaveHousehold() async {
+    if (isLeavingHousehold) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Rời nhóm?'),
+          content: const Text(
+            'Bạn sẽ không còn xem được khoản chi và công nợ của nhóm này.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Rời nhóm'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      isLeavingHousehold = true;
+    });
+
+    try {
+      await ApiService.leaveHousehold(household.id);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bạn đã rời nhóm'),
+        ),
+      );
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    } finally {
+        if (mounted) {
+          setState(() {
+            isLeavingHousehold = false;
+          });
+        }
+      }
+    }
 
   String formatMoney(double amount) {
     return amount.toStringAsFixed(0).replaceAllMapped(
@@ -1312,26 +1376,30 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         titleSpacing: 20,
         title: Text(household.name),
         actions: [
-          if (isCurrentUserOwner)
-            IconButton(
-              onPressed: showAddMemberDialog,
-              icon: const Icon(
-                Icons.person_add_alt_1_rounded,
-              ),
-            ),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ActivityScreen(
-                    householdId: household.id,
-                  ),
-                ),
-              );
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (value) {
+              if (value == 'add_member') {
+                showAddMemberDialog();
+              }
+
+              if (value == 'leave') {
+                confirmLeaveHousehold();
+              }
             },
-            icon: const Icon(Icons.history_rounded),
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'add_member',
+                child: Text('Thêm thành viên'),
+              ),
+              PopupMenuItem(
+                value: 'leave',
+                enabled: !isLeavingHousehold,
+                child: Text(
+                  isLeavingHousehold ? 'Đang rời nhóm...' : 'Rời nhóm',
+                ),
+              ),
+            ],
           ),
         ],
       ),
