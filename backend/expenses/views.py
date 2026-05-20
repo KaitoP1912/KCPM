@@ -41,6 +41,12 @@ class DebtListView(generics.ListAPIView):
         household_id = self.kwargs['household_id']
         current_user = self.request.user
 
+        if not HouseholdMember.objects.filter(
+            household_id=household_id,
+            user=current_user
+        ).exists():
+            return Debt.objects.none()
+
         debts = Debt.objects.filter(
             household_id=household_id,
             is_paid=False
