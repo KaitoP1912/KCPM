@@ -27,7 +27,10 @@ class HouseholdDetailScreen extends StatefulWidget {
 }
 
 class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
+  late Household household;
+
   bool isLoading = true;
+  bool isAddingMember = false;
   String? errorMessage;
 
   List<Expense> expenses = [];
@@ -45,7 +48,25 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   @override
   void initState() {
     super.initState();
+
+    household = widget.household;
+
     loadData();
+  }
+
+  @override
+  void dispose() {
+    expensePageController.dispose();
+    super.dispose();
+  }
+
+  bool get isCurrentUserOwner {
+    return household.members.any(
+      (member) =>
+          member.role == 'owner' &&
+          member.userEmail.trim().toLowerCase() ==
+              currentUserEmail,
+    );
   }
 
   Future<void> loadData() async {
@@ -72,14 +93,22 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
             '';
       }
 
+      final householdData =
+          await ApiService.getHouseholdDetail(
+        household.id,
+      );
+
+      final freshHousehold =
+          Household.fromJson(householdData);
+
       final expenseData =
           await ApiService.getHouseholdExpenses(
-        widget.household.id,
+        household.id,
       );
 
       final debtData =
           await ApiService.getHouseholdDebts(
-        widget.household.id,
+        household.id,
       );
 
       final loadedExpenses = expenseData
@@ -107,9 +136,12 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
       if (!mounted) return;
 
       setState(() {
+        household = freshHousehold;
+
         expenses = loadedExpenses;
         debts = loadedDebts;
         totalExpense = total;
+
         isLoading = false;
         errorMessage = null;
       });
@@ -134,7 +166,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => AddExpenseScreen(
-          household: widget.household,
+          household: household,
         ),
       ),
     );
@@ -145,65 +177,117 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Future<void> showAddMemberDialog() async {
+    if (!isCurrentUserOwner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ nhóm mới được thêm thành viên'),
+        ),
+      );
+      return;
+    }
+
     final controller = TextEditingController();
 
     await showDialog(
       context: context,
+      barrierDismissible: !isAddingMember,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Thêm thành viên'),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              hintText: 'Nhập email...',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            Future<void> submit() async {
+              if (isAddingMember) return;
+
+              final email = controller.text.trim().toLowerCase();
+
+              if (email.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Nhập email thành viên'),
+                  ),
+                );
+                return;
+              }
+
+              if (!email.contains('@')) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Email không hợp lệ'),
+                  ),
+                );
+                return;
+              }
+
+              setDialogState(() => isAddingMember = true);
+
+              try {
+                await ApiService.addMemberToHousehold(
+                  householdId: household.id,
+                  email: email,
+                );
+
+                if (!mounted || !dialogContext.mounted) return;
+
                 Navigator.pop(dialogContext);
-              },
-              child: const Text('Hủy'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final email = controller.text.trim();
 
-                if (email.isEmpty) {
-                  return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã thêm thành viên'),
+                  ),
+                );
+
+                await loadData();
+              } catch (e) {
+                if (!mounted) return;
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(e.toString()),
+                  ),
+                );
+              } finally {
+                if (mounted) {
+                  setDialogState(() => isAddingMember = false);
                 }
+              }
+            }
 
-                try {
-                  await ApiService.addMemberToHousehold(
-                    householdId: widget.household.id,
-                    email: email,
-                  );
-
-                  if (!mounted || !dialogContext.mounted) return;
-
-                  Navigator.pop(dialogContext);
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Đã thêm thành viên'),
-                    ),
-                  );
-
-                  await loadData();
-                } catch (e) {
-                  if (!mounted) return;
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(e.toString()),
-                    ),
-                  );
-                }
-              },
-              child: const Text('Thêm'),
-            ),
-          ],
+            return AlertDialog(
+              title: const Text('Thêm thành viên'),
+              content: TextField(
+                controller: controller,
+                enabled: !isAddingMember,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => submit(),
+                decoration: const InputDecoration(
+                  hintText: 'Nhập email...',
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isAddingMember
+                      ? null
+                      : () {
+                          Navigator.pop(dialogContext);
+                        },
+                  child: const Text('Hủy'),
+                ),
+                ElevatedButton(
+                  onPressed: isAddingMember ? null : submit,
+                  child: isAddingMember
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Thêm'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -418,7 +502,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            widget.household.name,
+                            household.name,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 26,
@@ -437,7 +521,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                             await Clipboard.setData(
                               ClipboardData(
                                 text:
-                                    widget.household.inviteCode,
+                                    household.inviteCode,
                               ),
                             );
 
@@ -483,7 +567,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                                 const SizedBox(width: 6),
 
                                 Text(
-                                  widget.household.inviteCode,
+                                  household.inviteCode,
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 13,
@@ -508,9 +592,9 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                     ),
 
                     Text(
-                      widget.household.description.isEmpty
+                      household.description.isEmpty
                           ? 'Nhóm chia tiền'
-                          : widget.household.description,
+                          : household.description,
                       style: const TextStyle(
                         color: Colors.white70,
                         fontWeight: FontWeight.w600,
@@ -549,7 +633,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
               const SizedBox(width: 12),
               buildMiniInfo(
                 icon: Icons.people_alt_rounded,
-                label: '${widget.household.members.length} thành viên',
+                label: '${household.members.length} thành viên',
               ),
             ],
           ),
@@ -592,7 +676,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Widget buildMembersSection() {
-    final members = widget.household.members;
+    final members = household.members;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -1226,14 +1310,15 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         titleSpacing: 20,
-        title: Text(widget.household.name),
+        title: Text(household.name),
         actions: [
-          IconButton(
-            onPressed: showAddMemberDialog,
-            icon: const Icon(
-              Icons.person_add_alt_1_rounded,
+          if (isCurrentUserOwner)
+            IconButton(
+              onPressed: showAddMemberDialog,
+              icon: const Icon(
+                Icons.person_add_alt_1_rounded,
+              ),
             ),
-          ),
           const SizedBox(width: 8),
           IconButton(
             onPressed: () {
@@ -1241,7 +1326,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => ActivityScreen(
-                    householdId: widget.household.id,
+                    householdId: household.id,
                   ),
                 ),
               );

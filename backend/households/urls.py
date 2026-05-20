@@ -2,6 +2,7 @@ from django.urls import path
 
 from households.views import (
     ActivityListView,
+    AddHouseholdMemberView,
     AllActivityListView,
     HouseholdDetailView,
     HouseholdListCreateView,
@@ -27,6 +28,11 @@ urlpatterns = [
     path(
         '<uuid:pk>/',
         HouseholdDetailView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/members/add/',
+        AddHouseholdMemberView.as_view(),
     ),
 
     path(

@@ -380,28 +380,40 @@ class ApiService {
   }
 
   static Future<List<dynamic>> getHouseholds() async {
-    final response = await dio.get('/households/');
-    return List<dynamic>.from(response.data);
-  }
-
-  static Future<Map<String, dynamic>> getHouseholdDetail(
-    String householdId,
-  ) async {
-    final response = await dio.get('/households/$householdId/');
-    return Map<String, dynamic>.from(response.data);
-  }
-
-  static Future<void> createHousehold({
+      final response = await dio.get('/households/');
+      return List<dynamic>.from(response.data);
+    }
+  
+  static Future<Response> createHousehold({
     required String name,
-    required String description,
+    String? description,
   }) async {
-    await dio.post(
+    return dio.post(
       '/households/',
       data: {
         'name': name,
-        'description': description,
+        'description': description ?? '',
       },
     );
+  }
+
+  static Future<Map<String, dynamic>>
+    getHouseholdDetail(
+    String householdId,
+  ) async {
+    try {
+      final response = await dio.get(
+        '/households/$householdId/',
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải chi tiết nhóm';
+    }
   }
 
   static Future<void> addMemberToHousehold({
@@ -568,6 +580,8 @@ class ApiService {
         'email',
       ],
     );
+    
+    await googleSignIn.signOut();
 
     final GoogleSignInAccount?
         googleUser =
@@ -618,6 +632,53 @@ class ApiService {
     );
   }
 
+  static String _extractErrorMessage(dynamic data) {
+    if (data == null) {
+      return '';
+    }
+
+    if (data is String) {
+      return data;
+    }
+
+    if (data is Map) {
+      final priorityKeys = [
+        'detail',
+        'message',
+        'error',
+        'non_field_errors',
+      ];
+
+      for (final key in priorityKeys) {
+        final value = data[key];
+
+        if (value == null) continue;
+
+        if (value is List && value.isNotEmpty) {
+          return value.first.toString();
+        }
+
+        if (value is String && value.trim().isNotEmpty) {
+          return value;
+        }
+      }
+
+      for (final entry in data.entries) {
+        final value = entry.value;
+
+        if (value is List && value.isNotEmpty) {
+          return value.first.toString();
+        }
+
+        if (value is String && value.trim().isNotEmpty) {
+          return value;
+        }
+      }
+    }
+
+    return '';
+  }
+
   static String parseDioException(
     DioException error,
   ) {
@@ -641,8 +702,20 @@ class ApiService {
       return 'Không có kết nối mạng.';
     }
 
+    final serverMessage = _extractErrorMessage(
+      error.response?.data,
+    );
+
+    if (serverMessage.isNotEmpty) {
+      return serverMessage;
+    }
+
     final statusCode =
         error.response?.statusCode;
+
+    if (statusCode == 400) {
+      return 'Dữ liệu gửi lên không hợp lệ.';
+    }
 
     if (statusCode == 401) {
       return 'Phiên đăng nhập đã hết hạn.';

@@ -1,4 +1,4 @@
-import 'member.dart';
+import 'household_member.dart';
 
 class Household {
   final String id;

@@ -276,22 +276,38 @@ class _LoginScreenState extends State<LoginScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
         ),
-        child: isLoading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
+        child: Row(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLoading)
+              const SizedBox(
+                width: 20,
+                height: 20,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
+                  strokeWidth: 2.2,
                   color: Colors.white,
                 ),
-              )
-            : const Text(
-                'Đăng nhập',
-                style: TextStyle(
+              ),
+
+            if (isLoading)
+              const SizedBox(width: 10),
+
+            Flexible(
+              child: Text(
+                isLoading
+                    ? 'Đang đăng nhập...'
+                    : 'Đăng nhập',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
                 ),
               ),
+            ),
+          ],
+        ),
       ),
     );
   }
