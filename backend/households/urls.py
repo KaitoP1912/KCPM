@@ -8,6 +8,7 @@ from households.views import (
     HouseholdListCreateView,
     HouseholdSummaryListView,
     JoinHouseholdView,
+    KickHouseholdMemberView,
     LeaveHouseholdView,
 )
 
@@ -40,6 +41,11 @@ urlpatterns = [
     path(
         '<uuid:household_id>/members/add/',
         AddHouseholdMemberView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/members/<uuid:member_id>/kick/',
+        KickHouseholdMemberView.as_view(),
     ),
 
     path(

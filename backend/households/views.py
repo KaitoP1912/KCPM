@@ -13,6 +13,8 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from expenses.models import Debt
+
 from households.models import (
     Activity,
     Household,
@@ -69,6 +71,7 @@ class HouseholdListCreateView(
             ),
         )
 
+
 class HouseholdSummaryListView(
     generics.ListAPIView
 ):
@@ -85,6 +88,7 @@ class HouseholdSummaryListView(
             'debts',
             'activities',
         ).distinct().order_by('-updated_at')
+
 
 class HouseholdDetailView(
     generics.RetrieveAPIView
@@ -107,10 +111,8 @@ class JoinHouseholdView(APIView):
 
     @transaction.atomic
     def post(self, request):
-        serializer = (
-            JoinHouseholdSerializer(
-                data=request.data
-            )
+        serializer = JoinHouseholdSerializer(
+            data=request.data
         )
 
         serializer.is_valid(
@@ -135,14 +137,10 @@ class JoinHouseholdView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        existing_member = (
-            HouseholdMember.objects.filter(
-                household=household,
-                user=request.user
-            ).exists()
-        )
-
-        if existing_member:
+        if HouseholdMember.objects.filter(
+            household=household,
+            user=request.user
+        ).exists():
             return Response(
                 {
                     'detail':
@@ -169,10 +167,7 @@ class JoinHouseholdView(APIView):
         Activity.objects.create(
             household=household,
             actor=request.user,
-            activity_type=(
-                Activity.ActivityType
-                .MEMBER_JOINED
-            ),
+            activity_type=Activity.ActivityType.MEMBER_JOINED,
             title=(
                 f'{request.user.email} '
                 f'đã tham gia nhóm'
@@ -181,13 +176,11 @@ class JoinHouseholdView(APIView):
 
         household.refresh_from_db()
 
-        response_serializer = (
-            HouseholdSerializer(
-                household,
-                context={
-                    'request': request
-                }
-            )
+        response_serializer = HouseholdSerializer(
+            household,
+            context={
+                'request': request
+            }
         )
 
         return Response(
@@ -247,7 +240,23 @@ class AddHouseholdMemberView(APIView):
         if not household:
             return Response(
                 {
-                    'detail': 'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+                    'detail':
+                    'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        owner_membership = HouseholdMember.objects.filter(
+            household=household,
+            user=request.user,
+            role=HouseholdMember.Role.OWNER,
+        ).first()
+
+        if not owner_membership:
+            return Response(
+                {
+                    'detail':
+                    'Chỉ chủ nhóm mới được thêm thành viên.'
                 },
                 status=status.HTTP_403_FORBIDDEN
             )
@@ -295,10 +304,7 @@ class AddHouseholdMemberView(APIView):
         Activity.objects.create(
             household=household,
             actor=request.user,
-            activity_type=(
-                Activity.ActivityType
-                .MEMBER_JOINED
-            ),
+            activity_type=Activity.ActivityType.MEMBER_JOINED,
             title=(
                 f'{request.user.email} '
                 f'đã thêm {user.email} vào nhóm'
@@ -307,6 +313,12 @@ class AddHouseholdMemberView(APIView):
                 'added_user_email': user.email,
                 'role': role,
             },
+        )
+
+        household.save(
+            update_fields=[
+                'updated_at',
+            ]
         )
 
         household.refresh_from_db()
@@ -326,10 +338,157 @@ class AddHouseholdMemberView(APIView):
             status=status.HTTP_201_CREATED
         )
 
+
+class KickHouseholdMemberView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def delete(self, request, household_id, member_id):
+        household = Household.objects.select_for_update().filter(
+            id=household_id,
+            is_active=True,
+        ).first()
+
+        if not household:
+            return Response(
+                {
+                    'detail':
+                    'Không tìm thấy nhóm.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        owner_membership = HouseholdMember.objects.filter(
+            household=household,
+            user=request.user,
+            role=HouseholdMember.Role.OWNER,
+        ).first()
+
+        if not owner_membership:
+            return Response(
+                {
+                    'detail':
+                    'Chỉ chủ nhóm mới được xóa thành viên.'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        target_membership = (
+            HouseholdMember.objects.select_for_update()
+            .select_related('user')
+            .filter(
+                id=member_id,
+                household=household,
+            )
+            .first()
+        )
+
+        if not target_membership:
+            return Response(
+                {
+                    'detail':
+                    'Thành viên không tồn tại trong nhóm.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if target_membership.user_id == request.user.id:
+            return Response(
+                {
+                    'detail':
+                    'Bạn không thể tự xóa chính mình. Hãy dùng chức năng rời nhóm.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if target_membership.role == HouseholdMember.Role.OWNER:
+            return Response(
+                {
+                    'detail':
+                    'Không thể xóa chủ nhóm.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        has_unpaid_debt = Debt.objects.filter(
+            household=household,
+            is_paid=False,
+        ).filter(
+            from_user=target_membership.user
+        ).exists() or Debt.objects.filter(
+            household=household,
+            is_paid=False,
+        ).filter(
+            to_user=target_membership.user
+        ).exists()
+
+        if has_unpaid_debt:
+            return Response(
+                {
+                    'detail':
+                    'Không thể xóa thành viên khi còn công nợ chưa thanh toán.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        kicked_user = target_membership.user
+        kicked_email = kicked_user.email
+        kicked_name = (
+            kicked_user.full_name
+            or kicked_user.email
+        )
+        actor_name = (
+            request.user.full_name
+            or request.user.email
+        )
+
+        Activity.objects.create(
+            household=household,
+            actor=request.user,
+            activity_type=Activity.ActivityType.MEMBER_JOINED,
+            title=(
+                f'{actor_name} đã xóa {kicked_name} khỏi nhóm'
+            ),
+            metadata={
+                'action': 'member_kicked',
+                'kicked_user_id': str(kicked_user.id),
+                'kicked_user_email': kicked_email,
+            },
+        )
+
+        target_membership.delete()
+
+        household.save(
+            update_fields=[
+                'updated_at',
+            ]
+        )
+
+        household.refresh_from_db()
+
+        response_serializer = HouseholdSerializer(
+            household,
+            context={
+                'request': request
+            }
+        )
+
+        return Response(
+            {
+                'message':
+                'Đã xóa thành viên khỏi nhóm.',
+                'household':
+                response_serializer.data,
+            },
+            status=status.HTTP_200_OK
+        )
+
+
 class DefaultPagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = 'page_size'
     max_page_size = 100
+
 
 class ActivityListView(generics.ListAPIView):
     serializer_class = ActivitySerializer
@@ -357,6 +516,7 @@ class AllActivityListView(
 ):
     serializer_class = ActivitySerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
 
     def get_queryset(self):
         return Activity.objects.filter(
@@ -367,6 +527,7 @@ class AllActivityListView(
             'actor',
             'household'
         ).order_by('-created_at')
+
 
 class LeaveHouseholdView(APIView):
     permission_classes = [IsAuthenticated]
@@ -382,7 +543,8 @@ class LeaveHouseholdView(APIView):
         if not household:
             return Response(
                 {
-                    'detail': 'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+                    'detail':
+                    'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -395,7 +557,8 @@ class LeaveHouseholdView(APIView):
         if not membership:
             return Response(
                 {
-                    'detail': 'Bạn không thuộc nhóm này.'
+                    'detail':
+                    'Bạn không thuộc nhóm này.'
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -410,7 +573,8 @@ class LeaveHouseholdView(APIView):
         ):
             return Response(
                 {
-                    'detail': 'Chủ nhóm không thể rời khi nhóm còn thành viên khác.'
+                    'detail':
+                    'Chủ nhóm không thể rời khi nhóm còn thành viên khác.'
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -430,7 +594,18 @@ class LeaveHouseholdView(APIView):
 
         if member_count == 1:
             household.is_active = False
-            household.save(update_fields=['is_active', 'updated_at'])
+            household.save(
+                update_fields=[
+                    'is_active',
+                    'updated_at',
+                ]
+            )
+        else:
+            household.save(
+                update_fields=[
+                    'updated_at',
+                ]
+            )
 
         return Response(
             {

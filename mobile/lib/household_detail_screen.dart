@@ -11,6 +11,7 @@ import 'widgets/app_empty_state.dart';
 import 'widgets/app_error_state.dart';
 import 'widgets/app_loading_state.dart';
 import 'package:flutter/services.dart';
+import 'household_members_screen.dart';
 
 class HouseholdDetailScreen extends StatefulWidget {
   final Household household;
@@ -31,6 +32,8 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   bool isLoading = true;
   bool isAddingMember = false;
   bool isLeavingHousehold = false;
+  bool isKickingMember = false;
+  String? kickingMemberId;
   String? errorMessage;
 
   List<Expense> expenses = [];
@@ -117,9 +120,10 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         page: 1,
       );
 
-      final debtData =
+      final debtResponse =
           await ApiService.getHouseholdDebts(
         household.id,
+        page: 1,
       );
 
       final loadedExpenses = List<dynamic>.from(
@@ -130,13 +134,13 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         ),
       ).toList();
 
-      final loadedDebts = debtData
-          .map<Debt>(
-            (json) => Debt.fromJson(
-              Map<String, dynamic>.from(json),
-            ),
-          )
-          .toList();
+      final loadedDebts = List<dynamic>.from(
+        debtResponse['results'],
+      ).map<Debt>(
+        (json) => Debt.fromJson(
+          Map<String, dynamic>.from(json),
+        ),
+      ).toList();
 
       double total = 0;
 
@@ -368,6 +372,25 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
     controller.dispose();
   }
 
+  Future<void> openMembersScreen() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HouseholdMembersScreen(
+          household: household,
+          currentUserEmail: currentUserEmail,
+          onHouseholdUpdated: (updatedHousehold) {
+            setState(() {
+              household = updatedHousehold;
+            });
+          },
+        ),
+      ),
+    );
+
+    await loadData();
+  }
+
   Future<void> confirmLeaveHousehold() async {
     if (isLeavingHousehold) return;
 
@@ -431,6 +454,110 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         }
       }
     }
+
+  Future<void> confirmKickMember(dynamic member) async {
+    if (isKickingMember) return;
+
+    final memberId = getMemberId(member);
+    final memberName = getMemberName(member);
+    final memberEmail = getMemberEmail(member);
+
+    if (memberId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không tìm thấy ID thành viên'),
+        ),
+      );
+      return;
+    }
+
+    if (!canKickMember(member)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Không thể xóa thành viên này'),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: !isKickingMember,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Xóa thành viên?'),
+          content: Text(
+            'Bạn có chắc muốn xóa $memberName khỏi nhóm?\n\n'
+            'Email: $memberEmail\n\n'
+            'Thành viên còn công nợ chưa thanh toán sẽ không thể bị xóa.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Xóa'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      isKickingMember = true;
+      kickingMemberId = memberId;
+    });
+
+    try {
+      final response =
+          await ApiService.kickMemberFromHousehold(
+        householdId: household.id,
+        memberId: memberId,
+      );
+
+      if (!mounted) return;
+
+      final householdData = Map<String, dynamic>.from(
+        response['household'],
+      );
+
+      setState(() {
+        household = Household.fromJson(householdData);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã xóa thành viên khỏi nhóm'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isKickingMember = false;
+          kickingMemberId = null;
+        });
+      }
+    }
+  }
 
   String formatMoney(double amount) {
     return amount.toStringAsFixed(0).replaceAllMapped(
@@ -547,6 +674,18 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
     }
   }
 
+  String getMemberId(dynamic member) {
+    try {
+      final value = member.id;
+
+      if (value != null && value.toString().isNotEmpty) {
+        return value.toString();
+      }
+    } catch (_) {}
+
+    return '';
+  }
+
   String getMemberEmail(dynamic member) {
     try {
       final value = member.email;
@@ -594,6 +733,25 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
     }
 
     return 'Thành viên';
+  }
+
+  bool canKickMember(dynamic member) {
+    if (!isCurrentUserOwner) return false;
+
+    final email = getMemberEmail(member)
+        .trim()
+        .toLowerCase();
+
+    final role = member.role
+        .toString()
+        .trim()
+        .toLowerCase();
+
+    if (email == currentUserEmail) return false;
+
+    if (role == 'owner') return false;
+
+    return true;
   }
 
   Widget buildHeroCard() {
@@ -813,7 +971,21 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Widget buildMembersSection() {
-    final members = household.members;
+    final members = List<dynamic>.from(household.members);
+
+    members.sort((a, b) {
+      if (a.role == 'owner' && b.role != 'owner') {
+        return -1;
+      }
+
+      if (a.role != 'owner' && b.role == 'owner') {
+        return 1;
+      }
+
+      return a.displayName.toString().compareTo(
+            b.displayName.toString(),
+          );
+    });
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -836,49 +1008,99 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
               ),
               const Spacer(),
               TextButton(
-                onPressed: () {},
-                child: const Text('View all'),
+                onPressed: openMembersScreen,
+                child: const Text('Xem tất cả'),
               ),
             ],
           ),
           const SizedBox(height: 18),
-          SizedBox(
-            height: 88,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: members.length,
-              separatorBuilder: (_, _) =>
-                  const SizedBox(width: 16),
-              itemBuilder: (_, index) {
-                final member = members[index];
 
-                return SizedBox(
-                  width: 64,
-                  child: Column(
-                    children: [
-                      buildAvatar(
-                        imageUrl: member.userAvatar,
-                        name: member.displayName,
-                        radius: 22,
+          if (members.isEmpty)
+            buildEmptyCard(
+              icon: Icons.people_outline_rounded,
+              title: 'Chưa có thành viên',
+            )
+          else
+            SizedBox(
+              height: 112,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: members.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: 16),
+                itemBuilder: (_, index) {
+                  final member = members[index];
+
+                  return GestureDetector(
+                    onTap: openMembersScreen,
+                    child: SizedBox(
+                      width: 76,
+                      child: Column(
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              buildAvatar(
+                                imageUrl: member.userAvatar,
+                                name: member.displayName,
+                                radius: 24,
+                              ),
+
+                              if (member.role == 'owner')
+                                Positioned(
+                                  right: -4,
+                                  bottom: -4,
+                                  child: Container(
+                                    padding:
+                                        const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber,
+                                      borderRadius:
+                                          BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.star_rounded,
+                                      size: 12,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            member.displayName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                          if (member.role == 'owner')
+                            const Text(
+                              'Owner',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.amber,
+                              ),
+                            ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        member.displayName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1444,9 +1666,12 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'add_member',
-                child: Text('Thêm thành viên'),
+                enabled: isCurrentUserOwner &&
+                    !isAddingMember &&
+                    !isKickingMember,
+                child: const Text('Thêm thành viên'),
               ),
               PopupMenuItem(
                 value: 'leave',

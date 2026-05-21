@@ -425,19 +425,48 @@ class ApiService {
     }
   }
 
-  static Future<void> addMemberToHousehold({
+  static Future<Map<String, dynamic>>addMemberToHousehold({
     required String householdId,
     required String email,
     String role = 'member',
   }) async {
-    await dio.post(
-      '/households/$householdId/members/add/',
-      data: {
-        'email': email,
-        'role': role,
-      },
-    );
+    try {
+      final response = await dio.post(
+        '/households/$householdId/members/add/',
+        data: {
+          'email': email,
+          'role': role,
+        },
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể thêm thành viên';
+    }
   }
+
+  static Future<Map<String, dynamic>> kickMemberFromHousehold({
+  required String householdId,
+  required String memberId,
+}) async {
+  try {
+    final response = await dio.delete(
+      '/households/$householdId/members/$memberId/kick/',
+    );
+
+    return Map<String, dynamic>.from(
+      response.data,
+    );
+  } on DioException catch (e) {
+    throw parseDioException(e);
+  } catch (_) {
+    throw 'Không thể xóa thành viên khỏi nhóm';
+  }
+}
 
   static Future<Map<String, dynamic>> getAllActivities({
     int page = 1,
@@ -486,14 +515,21 @@ class ApiService {
     };
   }
 
-  static Future<List<dynamic>> getHouseholdDebts(
-    String householdId,
-  ) async {
+  static Future<Map<String, dynamic>>
+      getHouseholdDebts(
+    String householdId, {
+    int page = 1,
+  }) async {
     final response = await dio.get(
-      '/expenses/household/$householdId/debts/',
+      '/expenses/household/$householdId/debts/?page=$page',
     );
 
-    return List<dynamic>.from(response.data);
+    return {
+      'results': List<dynamic>.from(
+        response.data['results'],
+      ),
+      'next': response.data['next'],
+    };
   }
 
   static Future<List<dynamic>> getAllDebtsFromHouseholds(
