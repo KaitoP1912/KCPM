@@ -40,10 +40,13 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
   String currentUserEmail = '';
 
-  final PageController expensePageController =
-    PageController();
+  final ScrollController scrollController =
+      ScrollController();
 
-  int currentExpensePage = 0;
+  int expensePage = 1;
+  bool hasMoreExpenses = true;
+  bool isLoadingMoreExpenses = false;
+  bool isExpensePageError = false;
 
   @override
   void initState() {
@@ -51,12 +54,19 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
     household = widget.household;
 
+    scrollController.addListener(() {
+      if (scrollController.position.pixels >=
+          scrollController.position.maxScrollExtent - 300) {
+        loadMoreExpenses();
+      }
+    });
+
     loadData();
   }
 
   @override
   void dispose() {
-    expensePageController.dispose();
+    scrollController.dispose();
     super.dispose();
   }
 
@@ -101,9 +111,10 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
       final freshHousehold =
           Household.fromJson(householdData);
 
-      final expenseData =
+      final expenseResponse =
           await ApiService.getHouseholdExpenses(
         household.id,
+        page: 1,
       );
 
       final debtData =
@@ -111,13 +122,13 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         household.id,
       );
 
-      final loadedExpenses = expenseData
-          .map<Expense>(
-            (json) => Expense.fromJson(
-              Map<String, dynamic>.from(json),
-            ),
-          )
-          .toList();
+      final loadedExpenses = List<dynamic>.from(
+        expenseResponse['results'],
+      ).map<Expense>(
+        (json) => Expense.fromJson(
+          Map<String, dynamic>.from(json),
+        ),
+      ).toList();
 
       final loadedDebts = debtData
           .map<Debt>(
@@ -142,6 +153,11 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         debts = loadedDebts;
         totalExpense = total;
 
+        expensePage = 1;
+        hasMoreExpenses = expenseResponse['next'] != null;
+        isLoadingMoreExpenses = false;
+        isExpensePageError = false;
+
         isLoading = false;
         errorMessage = null;
       });
@@ -159,6 +175,63 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
   Future<void> refreshData() async {
     await loadData();
+  }
+
+  Future<void> loadMoreExpenses() async {
+    if (isLoadingMoreExpenses ||
+        !hasMoreExpenses ||
+        isLoading ||
+        isExpensePageError) {
+      return;
+    }
+
+    setState(() {
+      isLoadingMoreExpenses = true;
+      isExpensePageError = false;
+    });
+
+    try {
+      final nextPage = expensePage + 1;
+
+      final response =
+          await ApiService.getHouseholdExpenses(
+        household.id,
+        page: nextPage,
+      );
+
+      final newExpenses = List<dynamic>.from(
+        response['results'],
+      ).map<Expense>(
+        (json) => Expense.fromJson(
+          Map<String, dynamic>.from(json),
+        ),
+      ).toList();
+
+      double addedTotal = 0;
+
+      for (final expense in newExpenses) {
+        addedTotal += expense.amount;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        expensePage = nextPage;
+        expenses.addAll(newExpenses);
+        totalExpense += addedTotal;
+        hasMoreExpenses = response['next'] != null;
+        isLoadingMoreExpenses = false;
+      });
+    } catch (e) {
+      debugPrint(e.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingMoreExpenses = false;
+        isExpensePageError = true;
+      });
+    }
   }
 
   Future<void> openAddExpenseScreen() async {
@@ -1060,14 +1133,6 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   }
 
   Widget buildExpenseSection() {
-    final pages = <List<Expense>>[];
-
-    for (int i = 0; i < expenses.length; i += 6) {
-      pages.add(
-        expenses.skip(i).take(6).toList(),
-      );
-    }
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1104,67 +1169,58 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
           else
             Column(
               children: [
-                SizedBox(
-                  height: 710,
-                  child: PageView.builder(
-                    controller:
-                        expensePageController,
-                    itemCount: pages.length,
-                    onPageChanged: (index) {
-                      setState(() {
-                        currentExpensePage =
-                            index;
-                      });
-                    },
-                    itemBuilder: (_, pageIndex) {
-                      final pageExpenses =
-                          pages[pageIndex];
+                ...expenses.map(
+                  buildCompactExpenseCard,
+                ),
 
-                      return Column(
-                        children: pageExpenses
-                            .map(
-                              buildCompactExpenseCard,
-                            )
-                            .toList(),
-                      );
-                    },
+                if (isLoadingMoreExpenses)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
                   ),
-                  ),
-                const SizedBox(height: 0),
-                Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.center,
-                  children: List.generate(
-                    pages.length,
-                    (index) {
-                      final active =
-                          index ==
-                          currentExpensePage;
 
-                      return AnimatedContainer(
-                        duration:
-                            const Duration(
-                          milliseconds: 220,
-                        ),
-                        margin:
-                            const EdgeInsets.symmetric(
-                          horizontal: 4,
-                        ),
-                        width: active ? 18 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: active
-                              ? AppColors.primary
-                              : AppColors.border,
-                          borderRadius:
-                              BorderRadius.circular(
-                            999,
+                if (isExpensePageError)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Không tải được thêm khoản chi',
+                          style: TextStyle(
+                            color: AppColors.textLight,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                      );
-                    },
+                        const SizedBox(height: 8),
+                        OutlinedButton(
+                          onPressed: () {
+                            setState(() {
+                              isExpensePageError = false;
+                            });
+
+                            loadMoreExpenses();
+                          },
+                          child: const Text('Thử lại'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+
+                if (!hasMoreExpenses &&
+                    expenses.isNotEmpty &&
+                    !isLoadingMoreExpenses)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'Đã tải hết khoản chi',
+                      style: TextStyle(
+                        color: AppColors.textLight,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
               ],
             ),
         ],
@@ -1422,6 +1478,7 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
       body: RefreshIndicator(
         onRefresh: refreshData,
         child: ListView(
+          controller: scrollController,
           physics:
               const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(20),

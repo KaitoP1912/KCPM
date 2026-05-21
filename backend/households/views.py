@@ -3,6 +3,7 @@ from django.db import IntegrityError
 from django.db import transaction
 
 from rest_framework import generics
+from rest_framework.pagination import PageNumberPagination
 from rest_framework import status
 
 from rest_framework.permissions import (
@@ -325,12 +326,15 @@ class AddHouseholdMemberView(APIView):
             status=status.HTTP_201_CREATED
         )
 
+class DefaultPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
-class ActivityListView(
-    generics.ListAPIView
-):
+class ActivityListView(generics.ListAPIView):
     serializer_class = ActivitySerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
 
     def get_queryset(self):
         household_id = self.kwargs[

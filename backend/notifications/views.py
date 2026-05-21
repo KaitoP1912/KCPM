@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
 
 from notifications.models import FCMDevice, Notification
 from notifications.serializers import (
@@ -37,10 +38,15 @@ class SaveFCMTokenView(APIView):
             status=status.HTTP_200_OK
         )
 
+class DefaultPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class NotificationListView(generics.ListAPIView):
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = DefaultPagination
 
     def get_queryset(self):
         return Notification.objects.filter(
@@ -103,3 +109,4 @@ class NotificationMarkAllReadView(APIView):
             {'message': 'Đã đánh dấu tất cả là đã đọc.'},
             status=status.HTTP_200_OK
         )
+    

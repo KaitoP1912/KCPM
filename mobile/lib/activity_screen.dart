@@ -24,12 +24,30 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   bool isLoadingActivities = true;
   bool isLoadingNotifications = true;
-  
+
+  bool isLoadingMoreActivities = false;
+  bool isLoadingMoreNotifications = false;
+
+  bool hasMoreActivities = true;
+  bool hasMoreNotifications = true;
+
+  bool isActivityPageError = false;
+  bool isNotificationPageError = false;
+
+  int activityPage = 1;
+  int notificationPage = 1;
+
   String? activityError;
   String? notificationError;
 
   List<dynamic> activities = [];
   List<dynamic> notifications = [];
+
+  final ScrollController activityScrollController =
+      ScrollController();
+
+  final ScrollController notificationScrollController =
+      ScrollController();
 
   bool get isGroupOnly => widget.householdId != null;
 
@@ -42,6 +60,20 @@ class _ActivityScreenState extends State<ActivityScreen>
       vsync: this,
     );
 
+    activityScrollController.addListener(() {
+      if (activityScrollController.position.pixels >=
+          activityScrollController.position.maxScrollExtent - 300) {
+        loadMoreActivities();
+      }
+    });
+
+    notificationScrollController.addListener(() {
+      if (notificationScrollController.position.pixels >=
+          notificationScrollController.position.maxScrollExtent - 300) {
+        loadMoreNotifications();
+      }
+    });
+
     loadActivities();
 
     if (!isGroupOnly) {
@@ -51,6 +83,8 @@ class _ActivityScreenState extends State<ActivityScreen>
 
   @override
   void dispose() {
+    activityScrollController.dispose();
+    notificationScrollController.dispose();
     tabController.dispose();
     super.dispose();
   }
@@ -60,20 +94,32 @@ class _ActivityScreenState extends State<ActivityScreen>
 
     setState(() {
       isLoadingActivities = true;
+      isLoadingMoreActivities = false;
+      hasMoreActivities = true;
+      isActivityPageError = false;
+      activityPage = 1;
       activityError = null;
     });
 
     try {
-      final data = isGroupOnly
+      final response = isGroupOnly
           ? await ApiService.getActivities(
               widget.householdId!,
+              page: 1,
             )
-          : await ApiService.getAllActivities();
+          : await ApiService.getAllActivities(
+              page: 1,
+            );
+
+      final data = List<dynamic>.from(
+        response['results'],
+      );
 
       if (!mounted) return;
 
       setState(() {
         activities = data;
+        hasMoreActivities = response['next'] != null;
         isLoadingActivities = false;
         activityError = null;
       });
@@ -89,21 +135,81 @@ class _ActivityScreenState extends State<ActivityScreen>
     }
   }
 
+  Future<void> loadMoreActivities() async {
+    if (isLoadingActivities ||
+        isLoadingMoreActivities ||
+        !hasMoreActivities ||
+        isActivityPageError) {
+      return;
+    }
+
+    setState(() {
+      isLoadingMoreActivities = true;
+      isActivityPageError = false;
+    });
+
+    try {
+      final nextPage = activityPage + 1;
+
+      final response = isGroupOnly
+          ? await ApiService.getActivities(
+              widget.householdId!,
+              page: nextPage,
+            )
+          : await ApiService.getAllActivities(
+              page: nextPage,
+            );
+
+      final newItems = List<dynamic>.from(
+        response['results'],
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        activityPage = nextPage;
+        activities.addAll(newItems);
+        hasMoreActivities = response['next'] != null;
+        isLoadingMoreActivities = false;
+      });
+    } catch (e) {
+      debugPrint(e.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingMoreActivities = false;
+        isActivityPageError = true;
+      });
+    }
+  }
+
   Future<void> loadNotifications() async {
     if (!mounted) return;
 
     setState(() {
       isLoadingNotifications = true;
+      isLoadingMoreNotifications = false;
+      hasMoreNotifications = true;
+      isNotificationPageError = false;
+      notificationPage = 1;
       notificationError = null;
     });
 
     try {
-      final data = await ApiService.getNotifications();
+      final response = await ApiService.getNotifications(
+        page: 1,
+      );
+
+      final data = List<dynamic>.from(
+        response['results'],
+      );
 
       if (!mounted) return;
 
       setState(() {
         notifications = data;
+        hasMoreNotifications = response['next'] != null;
         isLoadingNotifications = false;
         notificationError = null;
       });
@@ -115,6 +221,51 @@ class _ActivityScreenState extends State<ActivityScreen>
       setState(() {
         notificationError = 'Không thể tải thông báo';
         isLoadingNotifications = false;
+      });
+    }
+  }
+
+  Future<void> loadMoreNotifications() async {
+    if (isGroupOnly ||
+        isLoadingNotifications ||
+        isLoadingMoreNotifications ||
+        !hasMoreNotifications ||
+        isNotificationPageError) {
+      return;
+    }
+
+    setState(() {
+      isLoadingMoreNotifications = true;
+      isNotificationPageError = false;
+    });
+
+    try {
+      final nextPage = notificationPage + 1;
+
+      final response = await ApiService.getNotifications(
+        page: nextPage,
+      );
+
+      final newItems = List<dynamic>.from(
+        response['results'],
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        notificationPage = nextPage;
+        notifications.addAll(newItems);
+        hasMoreNotifications = response['next'] != null;
+        isLoadingMoreNotifications = false;
+      });
+    } catch (e) {
+      debugPrint(e.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingMoreNotifications = false;
+        isNotificationPageError = true;
       });
     }
   }
@@ -254,7 +405,12 @@ class _ActivityScreenState extends State<ActivityScreen>
 
         if (id != null && !isRead) {
           await ApiService.markNotificationAsRead(id);
-          await loadNotifications();
+
+          if (!mounted) return;
+
+          setState(() {
+            notification['is_read'] = true;
+          });
         }
       },
       child: buildFeedCard(
@@ -427,6 +583,11 @@ class _ActivityScreenState extends State<ActivityScreen>
     required String? errorMessage,
     required Future<void> Function() onRetry,
     required IconData emptyIcon,
+    required ScrollController controller,
+    required bool isLoadingMore,
+    required bool hasMore,
+    required bool isPageError,
+    required VoidCallback onLoadMoreRetry,
   }) {
     if (isLoading) {
       return const AppLoadingState(
@@ -445,6 +606,7 @@ class _ActivityScreenState extends State<ActivityScreen>
       return RefreshIndicator(
         onRefresh: refreshCurrent,
         child: ListView(
+          controller: controller,
           physics:
               const AlwaysScrollableScrollPhysics(),
           children: [
@@ -466,15 +628,68 @@ class _ActivityScreenState extends State<ActivityScreen>
     return RefreshIndicator(
       onRefresh: refreshCurrent,
       child: ListView.separated(
+        controller: controller,
         physics:
             const AlwaysScrollableScrollPhysics(),
         padding:
             const EdgeInsets.fromLTRB(20, 18, 20, 110),
-        itemCount: items.length,
+        itemCount: items.length + 1,
         separatorBuilder: (context, index) =>
             const SizedBox(height: 14),
         itemBuilder: (context, index) {
-          return builder(items[index]);
+          if (index < items.length) {
+            return builder(items[index]);
+          }
+
+          if (isLoadingMore) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+          }
+
+          if (isPageError) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Center(
+                child: Column(
+                  children: [
+                    const Text(
+                      'Không tải được dữ liệu tiếp theo',
+                      style: TextStyle(
+                        color: AppColors.textLight,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: onLoadMoreRetry,
+                      child: const Text('Thử lại'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          if (!hasMore) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(
+                child: Text(
+                  'Đã tải hết dữ liệu',
+                  style: TextStyle(
+                    color: AppColors.textLight,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return const SizedBox.shrink();
         },
       ),
     );
@@ -575,12 +790,18 @@ class _ActivityScreenState extends State<ActivityScreen>
                 controller: tabController,
                 children: isGroupOnly
                     ? [
+                        
                         buildList(
                           isLoading: isLoadingActivities,
                           items: activities,
                           errorMessage: activityError,
                           onRetry: loadActivities,
                           emptyIcon: Icons.history_rounded,
+                          controller: activityScrollController,
+                          isLoadingMore: isLoadingMoreActivities,
+                          hasMore: hasMoreActivities,
+                          isPageError: isActivityPageError,
+                          onLoadMoreRetry: loadMoreActivities,
                           builder: buildActivityCard,
                           emptyTitle: 'Chưa có hoạt động',
                           emptyDescription:
@@ -594,6 +815,11 @@ class _ActivityScreenState extends State<ActivityScreen>
                           errorMessage: activityError,
                           onRetry: loadActivities,
                           emptyIcon: Icons.history_rounded,
+                          controller: activityScrollController,
+                          isLoadingMore: isLoadingMoreActivities,
+                          hasMore: hasMoreActivities,
+                          isPageError: isActivityPageError,
+                          onLoadMoreRetry: loadMoreActivities,
                           builder: buildActivityCard,
                           emptyTitle: 'Chưa có hoạt động chung',
                           emptyDescription:
@@ -606,6 +832,11 @@ class _ActivityScreenState extends State<ActivityScreen>
                           onRetry: loadNotifications,
                           emptyIcon:
                               Icons.notifications_none_rounded,
+                          controller: notificationScrollController,
+                          isLoadingMore: isLoadingMoreNotifications,
+                          hasMore: hasMoreNotifications,
+                          isPageError: isNotificationPageError,
+                          onLoadMoreRetry: loadMoreNotifications,
                           builder: buildNotificationCard,
                           emptyTitle: 'Chưa có thông báo riêng',
                           emptyDescription:

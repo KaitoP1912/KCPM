@@ -439,29 +439,51 @@ class ApiService {
     );
   }
 
-  static Future<List<dynamic>> getAllActivities() async {
-    final response = await dio.get('/households/activities/');
-    return List<dynamic>.from(response.data);
-  }
-
-  static Future<List<dynamic>> getActivities(
-    String householdId,
-  ) async {
+  static Future<Map<String, dynamic>> getAllActivities({
+    int page = 1,
+  }) async {
     final response = await dio.get(
-      '/households/$householdId/activities/',
+      '/households/activities/?page=$page',
     );
 
-    return List<dynamic>.from(response.data);
+    return {
+      'results': List<dynamic>.from(
+        response.data['results'],
+      ),
+      'next': response.data['next'],
+    };
   }
 
-  static Future<List<dynamic>> getHouseholdExpenses(
-    String householdId,
-  ) async {
+  static Future<Map<String, dynamic>> getActivities(
+    String householdId, {
+    int page = 1,
+  }) async {
     final response = await dio.get(
-      '/expenses/household/$householdId/',
+      '/households/$householdId/activities/?page=$page',
     );
 
-    return List<dynamic>.from(response.data);
+    return {
+      'results': List<dynamic>.from(
+        response.data['results'],
+      ),
+      'next': response.data['next'],
+    };
+  }
+
+  static Future<Map<String, dynamic>> getHouseholdExpenses(
+    String householdId, {
+    int page = 1,
+  }) async {
+    final response = await dio.get(
+      '/expenses/household/$householdId/?page=$page',
+    );
+
+    return {
+      'results': List<dynamic>.from(
+        response.data['results'],
+      ),
+      'next': response.data['next'],
+    };
   }
 
   static Future<List<dynamic>> getHouseholdDebts(
@@ -534,9 +556,19 @@ class ApiService {
     );
   }
 
-  static Future<List<dynamic>> getNotifications() async {
-    final response = await dio.get('/notifications/');
-    return List<dynamic>.from(response.data);
+  static Future<Map<String, dynamic>> getNotifications({
+    int page = 1,
+  }) async {
+    final response = await dio.get(
+      '/notifications/?page=$page',
+    );
+
+    return {
+      'results': List<dynamic>.from(
+        response.data['results'],
+      ),
+      'next': response.data['next'],
+    };
   }
 
   static Future<int> getUnreadNotificationCount() async {

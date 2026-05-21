@@ -1,4 +1,8 @@
-from rest_framework import generics, permissions
+from collections import defaultdict
+
+from rest_framework import generics
+from rest_framework import permissions
+from rest_framework.pagination import PageNumberPagination
 
 from expenses.models import Debt, Expense
 from expenses.serializers import (
@@ -6,17 +10,26 @@ from expenses.serializers import (
     ExpenseCreateSerializer,
     ExpenseListSerializer,
 )
-from collections import defaultdict
+
 from households.models import HouseholdMember
+
+
+class DefaultPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 
 class ExpenseCreateView(generics.CreateAPIView):
     queryset = Expense.objects.all()
     serializer_class = ExpenseCreateSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
 class ExpenseListView(generics.ListAPIView):
     serializer_class = ExpenseListSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
 
     def get_queryset(self):
         household_id = self.kwargs['household_id']
@@ -33,9 +46,11 @@ class ExpenseListView(generics.ListAPIView):
             'payer'
         ).order_by('-created_at')
 
+
 class DebtListView(generics.ListAPIView):
     serializer_class = DebtSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = DefaultPagination
 
     def get_queryset(self):
         household_id = self.kwargs['household_id']
