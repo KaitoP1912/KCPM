@@ -12,9 +12,11 @@ workflows:
           cd mobile
           flutter pub get
           cd ..
-      - name: Install iOS Pods
+      - name: Update iOS minimum version
         script: |
           cd mobile/ios
+          # Cập nhật deployment target lên 15.0
+          sed -i '' "s/platform :ios, '13.0'/platform :ios, '15.0'/g" Podfile
           pod install
           cd ../..
       - name: Build iOS
