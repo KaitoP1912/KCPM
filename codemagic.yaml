@@ -7,19 +7,24 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Install dependencies
+      - name: Install Flutter dependencies
         script: |
           cd mobile
           flutter pub get
           cd ..
+      - name: Install iOS Pods
+        script: |
+          cd mobile/ios
+          pod install
+          cd ../..
       - name: Build iOS
         script: |
           cd mobile
-          flutter build ios --release
+          flutter build ios --release --no-codesign
           cd ..
     artifacts:
       - mobile/build/ios/iphoneos/*.ipa
     publishing:
       email:
         recipients:
-          - vanhieu25122006@gmail.com  # Thay bằng email bạn muốn nhận thông báo build
+          - vanhieu25122006@gmail.com
