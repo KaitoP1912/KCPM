@@ -20,11 +20,11 @@ workflows:
       - name: Build iOS
         script: |
           cd mobile
-          flutter build ios --release --no-codesign
+          flutter build ios --release --no-codesign --ios-minimum-os-version=15.0
           cd ..
     artifacts:
       - mobile/build/ios/iphoneos/*.ipa
     publishing:
       email:
         recipients:
-          - vanhieu251206@gmail.com
+          - vanhieu25122006@gmail.com
