@@ -1,0 +1,25 @@
+workflows:
+  ios_only:
+    name: Build iOS Only
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd mobile
+          flutter pub get
+          cd ..
+      - name: Build iOS
+        script: |
+          cd mobile
+          flutter build ios --release
+          cd ..
+    artifacts:
+      - mobile/build/ios/iphoneos/*.ipa
+    publishing:
+      email:
+        recipients:
+          - vanhieu25122006@gmail.com  # Thay bằng email bạn muốn nhận thông báo build
