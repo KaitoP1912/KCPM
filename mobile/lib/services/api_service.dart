@@ -12,10 +12,12 @@ class ApiService {
   );
 
   static String get baseUrl {
+    // Flutter Web Production
     if (kIsWeb) {
-      return 'http://127.0.0.1:8000/api';
+      return 'https://chungvi-production.up.railway.app/api';
     }
 
+    // Android Emulator / Physical Device Local
     return 'http://$apiHost:8000/api';
   }
 
