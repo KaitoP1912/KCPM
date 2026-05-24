@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import transaction
 from rest_framework import serializers
 
 from accounts.models import User
@@ -9,18 +10,88 @@ from households.models import Activity, HouseholdMember
 from notifications.models import Notification
 from notifications.services import create_notification
 
+
 def get_user_display_name(user):
     return user.full_name or user.email
+
+
+def format_money(amount):
+    return f'{amount:,.0f}đ'.replace(',', '.')
+
+
+def is_household_owner(user, household):
+    return HouseholdMember.objects.filter(
+        household=household,
+        user=user,
+        role=HouseholdMember.Role.OWNER,
+    ).exists()
+
+
+def is_user_expense_manager(user, expense):
+    return (
+        expense.payer_id == user.id or
+        is_household_owner(user, expense.household)
+    )
 
 
 class ExpenseParticipantInputSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
 
+    share_amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        required=False
+    )
 
-class ExpenseCreateSerializer(serializers.ModelSerializer):
+
+class ExpenseParticipantSerializer(serializers.ModelSerializer):
+    user_id = serializers.IntegerField(
+        source='user.id',
+        read_only=True
+    )
+
+    user_name = serializers.SerializerMethodField()
+    user_email = serializers.EmailField(
+        source='user.email',
+        read_only=True
+    )
+    user_avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExpenseParticipant
+        fields = [
+            'id',
+            'user_id',
+            'user_name',
+            'user_email',
+            'user_avatar',
+            'share_amount',
+        ]
+
+    def get_user_name(self, obj):
+        return get_user_display_name(obj.user)
+
+    def get_user_avatar(self, obj):
+        request = self.context.get('request')
+
+        if obj.user.avatar and request:
+            return request.build_absolute_uri(
+                obj.user.avatar.url
+            )
+
+        return ''
+
+
+class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
+    payer = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        required=False
+    )
+
     participants = ExpenseParticipantInputSerializer(
         many=True,
-        write_only=True
+        write_only=True,
+        required=False
     )
 
     class Meta:
@@ -34,27 +105,86 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
             'split_type',
             'note',
             'participants',
+            'expense_date',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = [
+            'id',
+            'expense_date',
+            'created_at',
+            'updated_at',
         ]
 
-    def validate(self, attrs):
-        household = attrs.get('household')
-        payer = attrs.get('payer')
-        participants = attrs.get('participants', [])
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
+        if self.instance is None:
+            self.fields['participants'].required = True
+            self.fields['household'].required = True
+        else:
+            self.fields['household'].read_only = True
+
+    def validate_title(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                'Tên khoản chi không được để trống.'
+            )
+
+        return value
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                'Số tiền phải lớn hơn 0.'
+            )
+
+        return value
+
+    def validate(self, attrs):
         request = self.context.get('request')
 
-        if not request or not HouseholdMember.objects.filter(
+        if not request:
+            raise serializers.ValidationError(
+                'Không xác định được người dùng hiện tại.'
+            )
+
+        instance = self.instance
+
+        household = (
+            attrs.get('household')
+            if instance is None
+            else instance.household
+        )
+
+        if not HouseholdMember.objects.filter(
             household=household,
             user=request.user
         ).exists():
             raise serializers.ValidationError(
-                'Bạn không có quyền thêm khoản chi vào nhóm này.'
+                'Bạn không có quyền thao tác trong nhóm này.'
             )
 
-        if not participants:
-            raise serializers.ValidationError(
-                'Vui lòng chọn ít nhất một người tham gia chia tiền.'
-            )
+        if instance is not None:
+            if not is_user_expense_manager(
+                request.user,
+                instance
+            ):
+                raise serializers.ValidationError(
+                    'Bạn không có quyền sửa khoản chi này.'
+                )
+
+            if instance.debts.filter(is_paid=True).exists():
+                raise serializers.ValidationError(
+                    'Không thể sửa khoản chi đã có công nợ được thanh toán.'
+                )
+
+        payer = attrs.get(
+            'payer',
+            instance.payer if instance else request.user
+        )
 
         if not HouseholdMember.objects.filter(
             household=household,
@@ -64,118 +194,264 @@ class ExpenseCreateSerializer(serializers.ModelSerializer):
                 'Người trả tiền không thuộc nhóm này.'
             )
 
-        participant_ids = [item['user_id'] for item in participants]
+        amount = attrs.get(
+            'amount',
+            instance.amount if instance else None
+        )
+
+        split_type = attrs.get(
+            'split_type',
+            instance.split_type if instance else Expense.SplitType.EQUAL
+        )
+
+        participants = attrs.get('participants')
+
+        if participants is None and instance is not None:
+            participants = [
+                {
+                    'user_id': item.user_id,
+                    'share_amount': item.share_amount,
+                }
+                for item in instance.participants.all()
+            ]
+
+        if not participants:
+            raise serializers.ValidationError(
+                'Vui lòng chọn ít nhất một người tham gia chia tiền.'
+            )
+
+        participant_ids = [
+            item['user_id']
+            for item in participants
+        ]
 
         if len(participant_ids) != len(set(participant_ids)):
             raise serializers.ValidationError(
                 'Danh sách người chia tiền bị trùng.'
             )
 
-        valid_member_count = HouseholdMember.objects.filter(
+        members = HouseholdMember.objects.filter(
             household=household,
             user_id__in=participant_ids
-        ).count()
+        ).select_related('user')
 
-        if valid_member_count != len(set(participant_ids)):
+        if members.count() != len(set(participant_ids)):
             raise serializers.ValidationError(
                 'Danh sách người chia tiền có người không thuộc nhóm.'
             )
 
-        return attrs
+        users_by_id = {
+            member.user_id: member.user
+            for member in members
+        }
 
-    def create(self, validated_data):
-        participants_data = validated_data.pop('participants')
-
-        expense = Expense.objects.create(**validated_data)
-
-        payer_name = get_user_display_name(expense.payer)
-
-        Activity.objects.create(
-            household=expense.household,
-            actor=expense.payer,
-            activity_type=Activity.ActivityType.EXPENSE_CREATED,
-            title=f'{payer_name} đã thêm khoản "{expense.title}"',
-            amount=expense.amount,
-            metadata={
-                'expense_id': str(expense.id),
-                'participant_count': len(participants_data),
-            }
+        split_items = self._build_split_items(
+            amount=amount,
+            split_type=split_type,
+            participants=participants,
+            users_by_id=users_by_id,
         )
 
-        participant_users = []
+        attrs['payer'] = payer
+        attrs['_split_items'] = split_items
 
-        for item in participants_data:
-            user = User.objects.get(id=item['user_id'])
-            participant_users.append(user)
+        return attrs
 
-        total_amount = int(expense.amount)
-        participant_count = len(participant_users)
+    def _build_split_items(
+        self,
+        *,
+        amount,
+        split_type,
+        participants,
+        users_by_id,
+    ):
+        if split_type == Expense.SplitType.MANUAL:
+            total_share = Decimal('0')
+            split_items = []
+
+            for item in participants:
+                if 'share_amount' not in item:
+                    raise serializers.ValidationError(
+                        'Chia thủ công cần nhập số tiền cho từng người.'
+                    )
+
+                share_amount = item['share_amount']
+
+                if share_amount <= 0:
+                    raise serializers.ValidationError(
+                        'Số tiền chia cho từng người phải lớn hơn 0.'
+                    )
+
+                total_share += share_amount
+
+                split_items.append(
+                    (
+                        users_by_id[item['user_id']],
+                        share_amount,
+                    )
+                )
+
+            if total_share != amount:
+                raise serializers.ValidationError(
+                    'Tổng số tiền chia phải bằng tổng khoản chi.'
+                )
+
+            return split_items
+
+        total_amount = int(amount)
+        participant_count = len(participants)
 
         base_share = total_amount // participant_count
         remainder = total_amount % participant_count
 
-        for index, user in enumerate(participant_users):
-            split_amount = Decimal(
+        split_items = []
+
+        for index, item in enumerate(participants):
+            share_amount = Decimal(
                 base_share + (
                     remainder if index == 0 else 0
                 )
             )
+
+            split_items.append(
+                (
+                    users_by_id[item['user_id']],
+                    share_amount,
+                )
+            )
+
+        return split_items
+
+    def _sync_participants_and_debts(
+        self,
+        *,
+        expense,
+        split_items,
+        send_notifications=False,
+    ):
+        expense.participants.all().delete()
+        expense.debts.all().delete()
+
+        payer_name = get_user_display_name(expense.payer)
+
+        for user, share_amount in split_items:
             ExpenseParticipant.objects.create(
                 expense=expense,
                 user=user,
-                share_amount=split_amount
+                share_amount=share_amount
             )
 
-            if user != expense.payer:
-                debt = Debt.objects.create(
-                    household=expense.household,
-                    expense=expense,
-                    from_user=user,
-                    to_user=expense.payer,
-                    amount=split_amount
-                )
+            if user == expense.payer:
+                continue
 
+            debt = Debt.objects.create(
+                household=expense.household,
+                expense=expense,
+                from_user=user,
+                to_user=expense.payer,
+                amount=share_amount
+            )
+
+            if send_notifications:
                 create_notification(
                     recipient=user,
                     actor=expense.payer,
                     household=expense.household,
-
                     notification_type=(
                         Notification.NotificationType.DEBT_CREATED
                     ),
-
                     level=Notification.Level.PUSH,
-
                     title=(
                         f'{payer_name} đã thêm khoản "{expense.title}", '
-                        f'bạn cần chia {split_amount:,.0f}đ'
-                    ).replace(',', '.'),
-
-                    amount=split_amount,
-
+                        f'bạn cần chia {format_money(share_amount)}'
+                    ),
+                    amount=share_amount,
                     metadata={
                         'expense_id': str(expense.id),
                         'debt_id': str(debt.id),
                         'payer_id': expense.payer.id,
-                        'share_amount': str(split_amount),
+                        'share_amount': str(share_amount),
                     },
-
                     push_title='Khoản chi mới',
-
                     push_body=(
                         f'{payer_name} vừa thêm '
                         f'"{expense.title}"'
                     ),
                 )
 
+    @transaction.atomic
+    def create(self, validated_data):
+        request = self.context.get('request')
+
+        split_items = validated_data.pop('_split_items')
+        validated_data.pop('participants', None)
+
+        expense = Expense.objects.create(**validated_data)
+
+        actor_name = get_user_display_name(request.user)
+
+        Activity.objects.create(
+            household=expense.household,
+            actor=request.user,
+            activity_type=Activity.ActivityType.EXPENSE_CREATED,
+            title=f'{actor_name} đã thêm khoản "{expense.title}"',
+            amount=expense.amount,
+            metadata={
+                'expense_id': str(expense.id),
+                'participant_count': len(split_items),
+            }
+        )
+
+        self._sync_participants_and_debts(
+            expense=expense,
+            split_items=split_items,
+            send_notifications=True,
+        )
+
         return expense
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        request = self.context.get('request')
+
+        split_items = validated_data.pop('_split_items')
+        validated_data.pop('participants', None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        self._sync_participants_and_debts(
+            expense=instance,
+            split_items=split_items,
+            send_notifications=False,
+        )
+
+        actor_name = get_user_display_name(request.user)
+
+        Activity.objects.create(
+            household=instance.household,
+            actor=request.user,
+            activity_type=Activity.ActivityType.EXPENSE_UPDATED,
+            title=f'{actor_name} đã sửa khoản "{instance.title}"',
+            amount=instance.amount,
+            metadata={
+                'expense_id': str(instance.id),
+                'participant_count': len(split_items),
+            }
+        )
+
+        return instance
 
 
 class ExpenseListSerializer(serializers.ModelSerializer):
-    payer_name = serializers.CharField(
-        source='payer.full_name',
+    payer_id = serializers.IntegerField(
+        source='payer.id',
         read_only=True
     )
+
+    payer_name = serializers.SerializerMethodField()
 
     payer_email = serializers.EmailField(
         source='payer.email',
@@ -184,21 +460,35 @@ class ExpenseListSerializer(serializers.ModelSerializer):
 
     payer_avatar = serializers.SerializerMethodField()
 
+    participants = ExpenseParticipantSerializer(
+        many=True,
+        read_only=True
+    )
+
+    can_manage = serializers.SerializerMethodField()
+
     class Meta:
         model = Expense
-
         fields = [
             'id',
+            'household',
             'title',
             'amount',
-
+            'payer_id',
             'payer_name',
             'payer_email',
             'payer_avatar',
-
+            'split_type',
+            'participants',
             'expense_date',
             'note',
+            'can_manage',
+            'created_at',
+            'updated_at',
         ]
+
+    def get_payer_name(self, obj):
+        return get_user_display_name(obj.payer)
 
     def get_payer_avatar(self, obj):
         request = self.context.get('request')
@@ -209,6 +499,22 @@ class ExpenseListSerializer(serializers.ModelSerializer):
             )
 
         return ''
+
+    def get_can_manage(self, obj):
+        request = self.context.get('request')
+
+        if not request:
+            return False
+
+        return is_user_expense_manager(
+            request.user,
+            obj
+        )
+
+
+class ExpenseDetailSerializer(ExpenseListSerializer):
+    pass
+
 
 class DebtSerializer(serializers.ModelSerializer):
     from_user_name = serializers.CharField(
@@ -252,7 +558,6 @@ class DebtSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Debt
-
         fields = [
             'id',
 
