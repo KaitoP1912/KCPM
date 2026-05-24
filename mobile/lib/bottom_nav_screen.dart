@@ -7,6 +7,7 @@ import 'home_screen.dart';
 import 'models/household.dart';
 import 'profile_screen.dart';
 import 'services/api_service.dart';
+import 'debt_overview_screen.dart';
 
 class BottomNavScreen extends StatefulWidget {
   const BottomNavScreen({super.key});
@@ -662,94 +663,6 @@ class _BottomNavScreenState
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class DebtOverviewScreen extends StatelessWidget {
-  const DebtOverviewScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const _SimpleFeatureScreen(
-      title: 'Công nợ',
-      icon: Icons.sync_alt_rounded,
-      description:
-          'Tổng quan ai nợ ai sẽ được gom tại màn hình này.',
-    );
-  }
-}
-
-class _SimpleFeatureScreen extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final String description;
-
-  const _SimpleFeatureScreen({
-    required this.title,
-    required this.icon,
-    required this.description,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: Text(title),
-      ),
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.all(24),
-          padding: const EdgeInsets.all(30),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(
-                    alpha: 0.10,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Icon(
-                  icon,
-                  color: AppColors.primary,
-                  size: 34,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textDark,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                description,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: AppColors.textLight,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  height: 1.45,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );

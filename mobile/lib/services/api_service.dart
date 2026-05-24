@@ -517,21 +517,42 @@ class ApiService {
     };
   }
 
-  static Future<Map<String, dynamic>>
-      getHouseholdDebts(
+  static Future<Map<String, dynamic>> getHouseholdDebts(
     String householdId, {
     int page = 1,
   }) async {
-    final response = await dio.get(
-      '/expenses/household/$householdId/debts/?page=$page',
-    );
+    try {
+      final response = await dio.get(
+        '/expenses/household/$householdId/debts/?page=$page',
+      );
 
-    return {
-      'results': List<dynamic>.from(
-        response.data['results'],
-      ),
-      'next': response.data['next'],
-    };
+      final data = response.data;
+
+      if (data is List) {
+        return {
+          'results': List<dynamic>.from(data),
+          'next': null,
+        };
+      }
+
+      if (data is Map) {
+        return {
+          'results': List<dynamic>.from(
+            data['results'] ?? [],
+          ),
+          'next': data['next'],
+        };
+      }
+
+      return {
+        'results': <dynamic>[],
+        'next': null,
+      };
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải danh sách công nợ';
+    }
   }
 
   static Future<List<dynamic>> getAllDebtsFromHouseholds(
