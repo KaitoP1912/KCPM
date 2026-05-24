@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'app_theme.dart';
+import 'models/expense.dart';
 import 'models/household.dart';
 import 'services/api_service.dart';
+import 'widgets/app_empty_state.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final Household household;
+  final Expense? expense;
 
   const AddExpenseScreen({
     super.key,
     required this.household,
+    this.expense,
   });
 
   @override
@@ -26,13 +31,47 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   bool isLoading = false;
 
+  bool get isEditMode => widget.expense != null;
+
   @override
   void initState() {
     super.initState();
 
-    if (widget.household.members.isNotEmpty) {
+    if (isEditMode) {
+      titleController.text = widget.expense!.title;
+      amountController.text = formatInputAmount(
+        widget.expense!.amount,
+      );
+      noteController.text = widget.expense!.note;
+
+      selectedPayer = findMemberByUserId(
+        widget.expense!.payerId,
+      );
+
+      final participantUserIds = widget.expense!.participants
+          .map((participant) => participant.userId)
+          .where((id) => id != 0)
+          .toSet();
+
+      selectedParticipants.addAll(
+        widget.household.members.where(
+          (member) => participantUserIds.contains(
+            getMemberId(member),
+          ),
+        ),
+      );
+    }
+
+    if (selectedPayer == null &&
+        widget.household.members.isNotEmpty) {
       selectedPayer = widget.household.members.first;
-      selectedParticipants.addAll(widget.household.members);
+    }
+
+    if (selectedParticipants.isEmpty &&
+        widget.household.members.isNotEmpty) {
+      selectedParticipants.addAll(
+        widget.household.members,
+      );
     }
   }
 
@@ -42,6 +81,31 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     amountController.dispose();
     noteController.dispose();
     super.dispose();
+  }
+
+  String formatInputAmount(double value) {
+    if (value <= 0) return '';
+
+    return value.toStringAsFixed(0);
+  }
+
+  String formatMoney(double amount) {
+    return amount.toStringAsFixed(0).replaceAllMapped(
+          RegExp(r'\B(?=(\d{3})+(?!\d))'),
+          (match) => '.',
+        );
+  }
+
+  dynamic findMemberByUserId(int userId) {
+    if (userId == 0) return null;
+
+    for (final member in widget.household.members) {
+      if (getMemberId(member) == userId) {
+        return member;
+      }
+    }
+
+    return null;
   }
 
   String getMemberEmail(dynamic member) {
@@ -77,6 +141,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       }
     } catch (_) {}
 
+    try {
+      final value = member.userFullName;
+      if (value != null && value.toString().isNotEmpty) {
+        return value.toString();
+      }
+    } catch (_) {}
+
     final email = getMemberEmail(member);
     return email.isNotEmpty ? email : 'Thành viên';
   }
@@ -94,12 +165,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return int.tryParse(value.toString()) ?? 0;
     } catch (_) {}
 
-    try {
-      final value = member.id;
-      if (value is int) return value;
-      return int.tryParse(value.toString()) ?? 0;
-    } catch (_) {}
-
     return 0;
   }
 
@@ -113,19 +178,36 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return double.tryParse(cleaned);
   }
 
-  Future<void> createExpense() async {
+  double get sharePreview {
+    final amount = parseAmount(amountController.text);
+
+    if (amount == null ||
+        amount <= 0 ||
+        selectedParticipants.isEmpty) {
+      return 0;
+    }
+
+    return amount / selectedParticipants.length;
+  }
+
+  Future<void> submitExpense() async {
     if (isLoading) return;
-    
+
     final title = titleController.text.trim();
     final amount = parseAmount(amountController.text);
 
-    if (amount == null || amount <= 0) {
-      showMessage('Nhập số tiền hợp lệ');
+    if (widget.household.members.isEmpty) {
+      showMessage('Nhóm chưa có thành viên để chia tiền');
       return;
     }
 
     if (title.isEmpty) {
       showMessage('Nhập tên khoản chi');
+      return;
+    }
+
+    if (amount == null || amount <= 0) {
+      showMessage('Nhập số tiền hợp lệ');
       return;
     }
 
@@ -143,6 +225,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final participantIds = selectedParticipants
         .map<int>((member) => getMemberId(member))
         .where((id) => id != 0)
+        .toSet()
         .toList();
 
     if (payerId == 0 || participantIds.isEmpty) {
@@ -153,22 +236,39 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     try {
       setState(() => isLoading = true);
 
-      await ApiService.createExpense(
-        householdId: widget.household.id,
-        title: title,
-        amount: amount,
-        payer: payerId,
-        participants: participantIds,
-        note: noteController.text.trim(),
-      );
+      if (isEditMode) {
+        await ApiService.updateExpense(
+          expenseId: widget.expense!.id,
+          title: title,
+          amount: amount,
+          payer: payerId,
+          participants: participantIds,
+          note: noteController.text.trim(),
+        );
+      } else {
+        await ApiService.createExpense(
+          householdId: widget.household.id,
+          title: title,
+          amount: amount,
+          payer: payerId,
+          participants: participantIds,
+          note: noteController.text.trim(),
+        );
+      }
 
       if (!mounted) return;
 
-      showMessage('Đã thêm khoản chi');
+      showMessage(
+        isEditMode
+            ? 'Đã cập nhật khoản chi'
+            : 'Đã thêm khoản chi',
+      );
+
       Navigator.pop(context, true);
     } catch (e) {
-      debugPrint(e.toString());
-      showMessage('Không thể tạo khoản chi');
+      if (!mounted) return;
+
+      showMessage(e.toString());
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
@@ -229,7 +329,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 Expanded(
                   child: TextField(
                     controller: amountController,
+                    enabled: !isLoading,
                     keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                    ],
+                    onChanged: (_) => setState(() {}),
                     style: const TextStyle(
                       color: AppColors.textDark,
                       fontSize: 30,
@@ -254,6 +359,16 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ],
             ),
           ),
+          if (sharePreview > 0) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Chia đều: khoảng ${formatMoney(sharePreview)}đ / người',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -269,6 +384,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     return TextField(
       controller: controller,
+      enabled: !isLoading,
       maxLines: maxLines,
       minLines: maxLines,
       style: const TextStyle(
@@ -317,6 +433,39 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 
+  Widget buildSplitTypeCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.16),
+        ),
+      ),
+      child: const Row(
+        children: [
+          Icon(
+            Icons.call_split_rounded,
+            color: AppColors.primary,
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Đang dùng chế độ chia đều cho các thành viên được chọn.',
+              style: TextStyle(
+                color: AppColors.textDark,
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget buildPayerSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -335,11 +484,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final firstLetter = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          selectedPayer = member;
-        });
-      },
+      onTap: isLoading
+          ? null
+          : () {
+              setState(() {
+                selectedPayer = member;
+              });
+            },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         margin: const EdgeInsets.only(bottom: 10),
@@ -409,15 +560,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final firstLetter = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (isSelected) {
-            selectedParticipants.remove(member);
-          } else {
-            selectedParticipants.add(member);
-          }
-        });
-      },
+      onTap: isLoading
+          ? null
+          : () {
+              setState(() {
+                if (isSelected) {
+                  selectedParticipants.remove(member);
+                } else {
+                  selectedParticipants.add(member);
+                }
+              });
+            },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         margin: const EdgeInsets.only(bottom: 10),
@@ -474,7 +627,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       width: double.infinity,
       height: 58,
       child: ElevatedButton(
-        onPressed: isLoading ? null : createExpense,
+        onPressed: isLoading ? null : submitExpense,
         child: isLoading
             ? const SizedBox(
                 width: 22,
@@ -484,66 +637,86 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   color: Colors.white,
                 ),
               )
-            : const Text('Lưu khoản chi'),
+            : Text(
+                isEditMode
+                    ? 'Lưu thay đổi'
+                    : 'Lưu khoản chi',
+              ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasMembers = widget.household.members.isNotEmpty;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         titleSpacing: 20,
-        title: const Text('Thêm khoản chi'),
+        title: Text(
+          isEditMode
+              ? 'Sửa khoản chi'
+              : 'Thêm khoản chi',
+        ),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    buildAmountCard(),
-                    const SizedBox(height: 22),
-                    buildInput(
-                      controller: titleController,
-                      hint: 'Tên khoản chi',
-                      icon: Icons.receipt_long_rounded,
+        child: hasMembers
+            ? Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          buildAmountCard(),
+                          const SizedBox(height: 22),
+                          buildInput(
+                            controller: titleController,
+                            hint: 'Tên khoản chi',
+                            icon: Icons.receipt_long_rounded,
+                          ),
+                          const SizedBox(height: 16),
+                          buildInput(
+                            controller: noteController,
+                            hint: 'Ghi chú',
+                            icon: Icons.notes_rounded,
+                            maxLines: 2,
+                          ),
+                          const SizedBox(height: 20),
+                          buildSplitTypeCard(),
+                          const SizedBox(height: 28),
+                          buildPayerSection(),
+                          const SizedBox(height: 28),
+                          buildParticipantSection(),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    buildInput(
-                      controller: noteController,
-                      hint: 'Ghi chú',
-                      icon: Icons.notes_rounded,
-                      maxLines: 2,
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                    decoration: BoxDecoration(
+                      color: AppColors.background,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 18,
+                          offset: const Offset(0, -6),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 28),
-                    buildPayerSection(),
-                    const SizedBox(height: 28),
-                    buildParticipantSection(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 18,
-                    offset: const Offset(0, -6),
+                    child: buildSaveButton(),
                   ),
                 ],
+              )
+            : const AppEmptyState(
+                icon: Icons.people_outline_rounded,
+                title: 'Chưa có thành viên',
+                message:
+                    'Nhóm cần có thành viên trước khi tạo khoản chi.',
               ),
-              child: buildSaveButton(),
-            ),
-          ],
-        ),
       ),
     );
   }

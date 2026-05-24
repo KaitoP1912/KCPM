@@ -34,6 +34,8 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   bool isLeavingHousehold = false;
   bool isKickingMember = false;
   String? kickingMemberId;
+  String? editingExpenseId;
+  String? deletingExpenseId;
   String? errorMessage;
 
   List<Expense> expenses = [];
@@ -250,6 +252,158 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
     if (result == true) {
       await loadData();
+    }
+  }
+
+  Future<void> openEditExpenseScreen(
+    Expense expense,
+  ) async {
+    if (editingExpenseId != null ||
+        deletingExpenseId != null) {
+      return;
+    }
+
+    if (!expense.canManage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Bạn không có quyền sửa khoản chi này',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      editingExpenseId = expense.id;
+    });
+
+    try {
+      final expenseData =
+          await ApiService.getExpenseDetail(
+        expense.id,
+      );
+
+      if (!mounted) return;
+
+      final detailExpense = Expense.fromJson(
+        Map<String, dynamic>.from(expenseData),
+      );
+
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AddExpenseScreen(
+            household: household,
+            expense: detailExpense,
+          ),
+        ),
+      );
+
+      if (result == true) {
+        await loadData();
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          editingExpenseId = null;
+        });
+      }
+    }
+  }
+
+  Future<void> confirmDeleteExpense(
+    Expense expense,
+  ) async {
+    if (deletingExpenseId != null ||
+        editingExpenseId != null) {
+      return;
+    }
+
+    if (!expense.canManage) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Bạn không có quyền xóa khoản chi này',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: deletingExpenseId == null,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Xóa khoản chi?'),
+          content: Text(
+            'Bạn có chắc muốn xóa khoản "${expense.title}" không?\n\n'
+            'Hành động này sẽ xóa công nợ liên quan đến khoản chi.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Xóa'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      deletingExpenseId = expense.id;
+    });
+
+    try {
+      await ApiService.deleteExpense(
+        expense.id,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã xóa khoản chi'),
+        ),
+      );
+
+      await loadData();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          deletingExpenseId = null;
+        });
+      }
     }
   }
 
@@ -1453,6 +1607,14 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   Widget buildCompactExpenseCard(
     Expense expense,
   ) {
+    final payerName = displayUserName(
+      name: expense.payerName,
+      email: expense.payerEmail,
+    );
+
+    final isBusy = editingExpenseId == expense.id ||
+        deletingExpenseId == expense.id;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
@@ -1464,57 +1626,134 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         children: [
           buildAvatar(
             imageUrl: expense.payerAvatar,
-            name: displayUserName(
-              name: expense.payerName,
-              email: expense.payerEmail,
-            ),
+            name: payerName,
             radius: 24,
           ),
           const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Text(
-                  expense.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textDark,
-                  ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: expense.canManage && !isBusy
+                  ? () => openEditExpenseScreen(expense)
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 4,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  displayUserName(
-                    name: expense.payerName,
-                    email: expense.payerEmail,
-                  ),
-                  style: const TextStyle(
-                    color: AppColors.textLight,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      expense.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Người trả: $payerName',
+                      style: const TextStyle(
+                        color: AppColors.textLight,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      expense.expenseDate,
+                      style: const TextStyle(
+                        color: AppColors.textLight,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (expense.participants.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Chia cho ${expense.participants.length} người',
+                        style: const TextStyle(
+                          color: AppColors.textLight,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  expense.expenseDate,
-                  style: const TextStyle(
-                    color: AppColors.textLight,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            '${formatMoney(expense.amount)}đ',
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              color: AppColors.primary,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${formatMoney(expense.amount)}đ',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (isBusy)
+                const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                  ),
+                )
+              else if (expense.canManage)
+                PopupMenuButton<String>(
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: AppColors.textLight,
+                  ),
+                  onSelected: (value) {
+                    if (value == 'edit') {
+                      openEditExpenseScreen(expense);
+                    }
+
+                    if (value == 'delete') {
+                      confirmDeleteExpense(expense);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_rounded),
+                          SizedBox(width: 10),
+                          Text('Sửa'),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.red,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Xóa',
+                            style: TextStyle(
+                              color: Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+            ],
           ),
         ],
       ),

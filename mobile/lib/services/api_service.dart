@@ -554,7 +554,7 @@ class ApiService {
     return allDebts;
   }
 
-  static Future<void> createExpense({
+  static Future<Map<String, dynamic>> createExpense({
     required String householdId,
     required String title,
     required double amount,
@@ -562,24 +562,103 @@ class ApiService {
     required List<int> participants,
     String note = '',
   }) async {
-    await dio.post(
-      '/expenses/',
-      data: {
-        'household': householdId,
-        'title': title,
-        'amount': amount.toInt(),
-        'payer': payer,
-        'participants': participants
-            .map(
-              (userId) => {
-                'user_id': userId,
-              },
-            )
-            .toList(),
-        'note': note,
-        'split_type': 'equal',
-      },
-    );
+    try {
+      final response = await dio.post(
+        '/expenses/',
+        data: {
+          'household': householdId,
+          'title': title,
+          'amount': amount.toInt(),
+          'payer': payer,
+          'participants': participants
+              .map(
+                (userId) => {
+                  'user_id': userId,
+                },
+              )
+              .toList(),
+          'note': note,
+          'split_type': 'equal',
+        },
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tạo khoản chi';
+    }
+  }
+
+  static Future<Map<String, dynamic>> getExpenseDetail(
+    String expenseId,
+  ) async {
+    try {
+      final response = await dio.get(
+        '/expenses/$expenseId/',
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải khoản chi';
+    }
+  }
+
+  static Future<Map<String, dynamic>> updateExpense({
+    required String expenseId,
+    required String title,
+    required double amount,
+    required int payer,
+    required List<int> participants,
+    String note = '',
+  }) async {
+    try {
+      final response = await dio.patch(
+        '/expenses/$expenseId/',
+        data: {
+          'title': title,
+          'amount': amount.toInt(),
+          'payer': payer,
+          'participants': participants
+              .map(
+                (userId) => {
+                  'user_id': userId,
+                },
+              )
+              .toList(),
+          'note': note,
+          'split_type': 'equal',
+        },
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể cập nhật khoản chi';
+    }
+  }
+
+  static Future<void> deleteExpense(
+    String expenseId,
+  ) async {
+    try {
+      await dio.delete(
+        '/expenses/$expenseId/',
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể xóa khoản chi';
+    }
   }
 
   static Future<void> saveFCMToken(
