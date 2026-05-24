@@ -181,6 +181,13 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
                     'Không thể sửa khoản chi đã có công nợ được thanh toán.'
                 )
 
+            if instance.debts.filter(
+                payments__status='pending'
+            ).exists():
+                raise serializers.ValidationError(
+                    'Không thể sửa khoản chi đang chờ xác nhận thanh toán.'
+                )
+
         payer = attrs.get(
             'payer',
             instance.payer if instance else request.user
@@ -517,6 +524,16 @@ class ExpenseDetailSerializer(ExpenseListSerializer):
 
 
 class DebtSerializer(serializers.ModelSerializer):
+    expense_id = serializers.UUIDField(
+        source='expense.id',
+        read_only=True
+    )
+
+    expense_title = serializers.CharField(
+        source='expense.title',
+        read_only=True
+    )
+
     from_user_name = serializers.CharField(
         source='from_user.full_name',
         read_only=True
@@ -556,10 +573,17 @@ class DebtSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    pending_payment_id = serializers.SerializerMethodField()
+    pending_payment_status = serializers.SerializerMethodField()
+    can_mark_paid = serializers.SerializerMethodField()
+    can_confirm_payment = serializers.SerializerMethodField()
+
     class Meta:
         model = Debt
         fields = [
             'id',
+            'expense_id',
+            'expense_title',
 
             'from_user_name',
             'from_user_email',
@@ -575,7 +599,54 @@ class DebtSerializer(serializers.ModelSerializer):
 
             'amount',
             'is_paid',
+            'pending_payment_id',
+            'pending_payment_status',
+            'can_mark_paid',
+            'can_confirm_payment',
         ]
+
+    def get_pending_payment(self, obj):
+        return obj.payments.filter(
+            status='pending'
+        ).order_by('-created_at').first()
+
+    def get_pending_payment_id(self, obj):
+        payment = self.get_pending_payment(obj)
+
+        if payment:
+            return str(payment.id)
+
+        return None
+
+    def get_pending_payment_status(self, obj):
+        payment = self.get_pending_payment(obj)
+
+        if payment:
+            return payment.status
+
+        return ''
+
+    def get_can_mark_paid(self, obj):
+        request = self.context.get('request')
+
+        if not request or obj.is_paid:
+            return False
+
+        if obj.from_user_id != request.user.id:
+            return False
+
+        return self.get_pending_payment(obj) is None
+
+    def get_can_confirm_payment(self, obj):
+        request = self.context.get('request')
+
+        if not request or obj.is_paid:
+            return False
+
+        if obj.to_user_id != request.user.id:
+            return False
+
+        return self.get_pending_payment(obj) is not None
 
     def get_from_user_avatar(self, obj):
         request = self.context.get('request')

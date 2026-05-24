@@ -27,9 +27,11 @@ class _DebtOverviewScreenState
     extends State<DebtOverviewScreen> {
   bool isLoading = true;
   bool isRefreshing = false;
+  bool isSubmittingPayment = false;
 
   String? errorMessage;
   String currentUserEmail = '';
+  String? submittingDebtId;
 
   DebtFilter selectedFilter = DebtFilter.all;
 
@@ -53,7 +55,6 @@ class _DebtOverviewScreenState
 
     try {
       final profile = await ApiService.getProfile();
-
       final email = profile['email']?.toString() ?? '';
 
       final householdResponse =
@@ -138,6 +139,116 @@ class _DebtOverviewScreenState
     });
 
     await loadDebts(showLoading: false);
+  }
+
+  Future<void> markDebtPaid(Debt debt) async {
+    if (isSubmittingPayment) return;
+
+    setState(() {
+      isSubmittingPayment = true;
+      submittingDebtId = debt.id;
+    });
+
+    try {
+      await ApiService.markDebtPaid(debt.id);
+
+      if (!mounted) return;
+
+      showSnackBar(
+        'Đã gửi yêu cầu xác nhận thanh toán.',
+      );
+
+      await loadDebts(showLoading: false);
+    } catch (e) {
+      if (!mounted) return;
+
+      showSnackBar(getErrorMessage(e));
+    } finally {
+        if (mounted) {
+          setState(() {
+            isSubmittingPayment = false;
+            submittingDebtId = null;
+          });
+        }
+      }
+  }
+
+  Future<void> confirmPayment(Debt debt) async {
+    if (isSubmittingPayment ||
+        debt.pendingPaymentId == null) {
+      return;
+    }
+
+    setState(() {
+      isSubmittingPayment = true;
+      submittingDebtId = debt.id;
+    });
+
+    try {
+      await ApiService.confirmPayment(
+        debt.pendingPaymentId!,
+      );
+
+      if (!mounted) return;
+
+      showSnackBar('Đã xác nhận nhận tiền.');
+
+      await loadDebts(showLoading: false);
+    } catch (e) {
+      if (!mounted) return;
+
+      showSnackBar(getErrorMessage(e));
+    } finally {
+        if (mounted) {
+          setState(() {
+            isSubmittingPayment = false;
+            submittingDebtId = null;
+          });
+        }
+      }
+  }
+
+  Future<void> rejectPayment(Debt debt) async {
+    if (isSubmittingPayment ||
+        debt.pendingPaymentId == null) {
+      return;
+    }
+
+    setState(() {
+      isSubmittingPayment = true;
+      submittingDebtId = debt.id;
+    });
+
+    try {
+      await ApiService.rejectPayment(
+        debt.pendingPaymentId!,
+      );
+
+      if (!mounted) return;
+
+      showSnackBar('Đã từ chối yêu cầu thanh toán.');
+
+      await loadDebts(showLoading: false);
+    } catch (e) {
+      if (!mounted) return;
+
+      showSnackBar(getErrorMessage(e));
+    } finally {
+        if (mounted) {
+          setState(() {
+            isSubmittingPayment = false;
+            submittingDebtId = null;
+          });
+        }
+      }
+  }
+
+  void showSnackBar(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   List<_DebtItem> get visibleDebts {
@@ -325,8 +436,7 @@ class _DebtOverviewScreenState
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Row(
             children: [
@@ -385,8 +495,7 @@ class _DebtOverviewScreenState
         ),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
@@ -500,9 +609,10 @@ class _DebtOverviewScreenState
         ? 'Bạn nợ ${displayName(debt.toUserName, debt.toUserEmail)}'
         : '${displayName(debt.fromUserName, debt.fromUserEmail)} nợ bạn';
 
-    final subtitle = isOwe
-        ? 'Cần chuyển cho ${displayName(debt.toUserName, debt.toUserEmail)}'
-        : 'Chờ ${displayName(debt.fromUserName, debt.fromUserEmail)} thanh toán';
+    final subtitle = buildDebtSubtitle(
+      debt: debt,
+      isOwe: isOwe,
+    );
 
     return InkWell(
       onTap: () => showDebtDetail(item),
@@ -513,7 +623,9 @@ class _DebtOverviewScreenState
           color: Colors.white,
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: AppColors.border,
+            color: debt.hasPendingPayment
+                ? AppColors.primary.withValues(alpha: 0.40)
+                : AppColors.border,
           ),
           boxShadow: [
             BoxShadow(
@@ -526,9 +638,7 @@ class _DebtOverviewScreenState
         child: Row(
           children: [
             buildAvatar(
-              isOwe
-                  ? debt.toUserName
-                  : debt.fromUserName,
+              isOwe ? debt.toUserName : debt.fromUserName,
               isOwe
                   ? Icons.call_made_rounded
                   : Icons.call_received_rounded,
@@ -537,8 +647,7 @@ class _DebtOverviewScreenState
             const SizedBox(width: 14),
             Expanded(
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
@@ -556,10 +665,12 @@ class _DebtOverviewScreenState
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppColors.textLight,
+                    style: TextStyle(
+                      color: debt.hasPendingPayment
+                          ? AppColors.primary
+                          : AppColors.textLight,
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 7),
@@ -590,8 +701,7 @@ class _DebtOverviewScreenState
             ),
             const SizedBox(width: 12),
             Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   formatMoney(debt.amount),
@@ -605,16 +715,46 @@ class _DebtOverviewScreenState
                   ),
                 ),
                 const SizedBox(height: 6),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textLight,
-                ),
+                if (isSubmittingPayment &&
+                    submittingDebtId == debt.id)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.primary,
+                    ),
+                  )
+                else
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textLight,
+                  ),
               ],
             ),
           ],
         ),
       ),
     );
+  }
+
+  String buildDebtSubtitle({
+    required Debt debt,
+    required bool isOwe,
+  }) {
+    if (debt.hasPendingPayment) {
+      return isOwe
+          ? 'Đang chờ người nhận xác nhận'
+          : 'Đang chờ bạn xác nhận thanh toán';
+    }
+
+    if (debt.expenseTitle.trim().isNotEmpty) {
+      return 'Khoản chi: ${debt.expenseTitle}';
+    }
+
+    return isOwe
+        ? 'Cần chuyển cho ${displayName(debt.toUserName, debt.toUserEmail)}'
+        : 'Chờ ${displayName(debt.fromUserName, debt.fromUserEmail)} thanh toán';
   }
 
   Widget buildAvatar(
@@ -693,81 +833,338 @@ class _DebtOverviewScreenState
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color:
-                      Colors.black.withValues(alpha: 0.12),
+                  color: Colors.black.withValues(alpha: 0.12),
                   blurRadius: 30,
                   offset: const Offset(0, 12),
                 ),
               ],
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: AppColors.border,
-                      borderRadius:
-                          BorderRadius.circular(999),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius:
+                            BorderRadius.circular(999),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  isOwe
-                      ? 'Thông tin thanh toán'
-                      : 'Chi tiết khoản được nhận',
-                  style: const TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
+                  const SizedBox(height: 18),
+                  Text(
+                    isOwe
+                        ? 'Thông tin thanh toán'
+                        : 'Chi tiết khoản được nhận',
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                buildDetailRow(
-                  icon: Icons.groups_rounded,
-                  label: 'Nhóm',
-                  value: item.household.name,
-                ),
-                buildDetailRow(
-                  icon: Icons.person_rounded,
-                  label: 'Người nợ',
-                  value: debtorName,
-                ),
-                buildDetailRow(
-                  icon: Icons.account_balance_wallet_rounded,
-                  label: 'Người nhận',
-                  value: receiverName,
-                ),
-                buildDetailRow(
-                  icon: Icons.payments_rounded,
-                  label: 'Số tiền',
-                  value: formatMoney(debt.amount),
-                ),
-                const SizedBox(height: 10),
-                const Divider(height: 1),
-                const SizedBox(height: 14),
-                const Text(
-                  'Thông tin ngân hàng người nhận',
-                  style: TextStyle(
-                    color: AppColors.textDark,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
+                  const SizedBox(height: 14),
+                  buildDetailRow(
+                    icon: Icons.groups_rounded,
+                    label: 'Nhóm',
+                    value: item.household.name,
                   ),
-                ),
-                const SizedBox(height: 10),
-                buildBankInfo(debt),
-              ],
+                  buildDetailRow(
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Khoản chi',
+                    value: debt.expenseTitle,
+                  ),
+                  buildDetailRow(
+                    icon: Icons.person_rounded,
+                    label: 'Người nợ',
+                    value: debtorName,
+                  ),
+                  buildDetailRow(
+                    icon: Icons.account_balance_wallet_rounded,
+                    label: 'Người nhận',
+                    value: receiverName,
+                  ),
+                  buildDetailRow(
+                    icon: Icons.payments_rounded,
+                    label: 'Số tiền',
+                    value: formatMoney(debt.amount),
+                  ),
+                  if (debt.hasPendingPayment)
+                    buildPendingNotice(isOwe: isOwe),
+                  const SizedBox(height: 10),
+                  const Divider(height: 1),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Thông tin ngân hàng người nhận',
+                    style: TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  buildBankInfo(debt),
+                  const SizedBox(height: 16),
+                  buildPaymentActionSection(item),
+                  const SizedBox(height: 18),
+                  buildPaymentActions(
+                    sheetContext: sheetContext,
+                    debt: debt,
+                    isOwe: isOwe,
+                  ),
+                ],
+              ),
             ),
           ),
         );
       },
     );
+  }
+
+  Widget buildPaymentActionSection(_DebtItem item) {
+    final debt = item.debt;
+
+    final isOwe = item.isCurrentUserDebtor(
+      currentUserEmail,
+    );
+
+    final isReceiver = item.isCurrentUserReceiver(
+      currentUserEmail,
+    );
+
+    final isSubmitting =
+        isSubmittingPayment && submittingDebtId == debt.id;
+
+    if (debt.hasPendingPayment) {
+      if (isReceiver) {
+        return Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: isSubmitting
+                    ? null
+                    : () => rejectPayment(debt),
+                icon: const Icon(Icons.close_rounded),
+                label: const Text('Từ chối'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: isSubmitting
+                    ? null
+                    : () => confirmPayment(debt),
+                icon: isSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: const Text('Xác nhận'),
+              ),
+            ),
+          ],
+        );
+      }
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: AppColors.primary.withValues(alpha: 0.18),
+          ),
+        ),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.hourglass_top_rounded,
+              color: AppColors.primary,
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Đang chờ người nhận xác nhận thanh toán.',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w800,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (isOwe) {
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: isSubmitting
+              ? null
+              : () => markDebtPaid(debt),
+          icon: isSubmitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.payments_rounded),
+          label: Text(
+            isSubmitting
+                ? 'Đang gửi...'
+                : 'Tôi đã thanh toán',
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.border,
+        ),
+      ),
+      child: const Text(
+        'Chờ người nợ gửi yêu cầu xác nhận thanh toán.',
+        style: TextStyle(
+          color: AppColors.textLight,
+          fontWeight: FontWeight.w700,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+
+  Widget buildPendingNotice({
+    required bool isOwe,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Text(
+        isOwe
+            ? 'Bạn đã báo thanh toán. Công nợ sẽ được đóng sau khi người nhận xác nhận.'
+            : 'Người nợ đã báo thanh toán. Hãy xác nhận nếu bạn đã nhận tiền.',
+        style: const TextStyle(
+          color: AppColors.primary,
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          height: 1.4,
+        ),
+      ),
+    );
+  }
+
+  Widget buildPaymentActions({
+    required BuildContext sheetContext,
+    required Debt debt,
+    required bool isOwe,
+  }) {
+    if (isOwe && debt.canMarkPaid) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: isSubmittingPayment
+              ? null
+              : () {
+                  Navigator.pop(sheetContext);
+                  markDebtPaid(debt);
+                },
+          icon: const Icon(Icons.check_circle_rounded),
+          label: const Text('Tôi đã thanh toán'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (!isOwe && debt.canConfirmPayment) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: isSubmittingPayment
+                  ? null
+                  : () {
+                      Navigator.pop(sheetContext);
+                      rejectPayment(debt);
+                    },
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('Từ chối'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.redAccent,
+                side: const BorderSide(color: Colors.redAccent),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: isSubmittingPayment
+                  ? null
+                  : () {
+                      Navigator.pop(sheetContext);
+                      confirmPayment(debt);
+                    },
+              icon: const Icon(Icons.done_rounded),
+              label: const Text('Xác nhận'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (debt.hasPendingPayment) {
+      return const SizedBox.shrink();
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget buildDetailRow({

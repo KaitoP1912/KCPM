@@ -1,8 +1,6 @@
-from collections import defaultdict
+from django.db.models import Q
 
-from rest_framework import generics
-from rest_framework import permissions
-from rest_framework import status
+from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -16,7 +14,6 @@ from expenses.serializers import (
     get_user_display_name,
     is_user_expense_manager,
 )
-
 from households.models import Activity, HouseholdMember
 
 
@@ -40,14 +37,16 @@ class ExpenseListView(generics.ListAPIView):
     def get_queryset(self):
         household_id = self.kwargs['household_id']
 
-        if not HouseholdMember.objects.filter(
+        is_member = HouseholdMember.objects.filter(
             household_id=household_id,
-            user=self.request.user
-        ).exists():
+            user=self.request.user,
+        ).exists()
+
+        if not is_member:
             return Expense.objects.none()
 
         return Expense.objects.filter(
-            household_id=household_id
+            household_id=household_id,
         ).select_related(
             'household',
             'payer',
@@ -68,21 +67,19 @@ class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         return Expense.objects.filter(
-            household__members__user=self.request.user
+            household__members__user=self.request.user,
         ).select_related(
             'household',
             'payer',
         ).prefetch_related(
             'participants__user',
+            'debts',
         ).distinct()
 
     def destroy(self, request, *args, **kwargs):
         expense = self.get_object()
 
-        if not is_user_expense_manager(
-            request.user,
-            expense
-        ):
+        if not is_user_expense_manager(request.user, expense):
             raise PermissionDenied(
                 'Bạn không có quyền xóa khoản chi này.'
             )
@@ -93,13 +90,12 @@ class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
                     'detail':
                     'Không thể xóa khoản chi đã có công nợ được thanh toán.'
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         expense_title = expense.title
         expense_amount = expense.amount
         household = expense.household
-
         actor_name = get_user_display_name(request.user)
 
         Activity.objects.create(
@@ -111,7 +107,7 @@ class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
             metadata={
                 'expense_id': str(expense.id),
                 'expense_title': expense_title,
-            }
+            },
         )
 
         expense.delete()
@@ -120,7 +116,7 @@ class ExpenseDetailView(generics.RetrieveUpdateDestroyAPIView):
             {
                 'message': 'Xóa khoản chi thành công.'
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
@@ -133,62 +129,24 @@ class DebtListView(generics.ListAPIView):
         household_id = self.kwargs['household_id']
         current_user = self.request.user
 
-        if not HouseholdMember.objects.filter(
+        is_member = HouseholdMember.objects.filter(
             household_id=household_id,
-            user=current_user
-        ).exists():
+            user=current_user,
+        ).exists()
+
+        if not is_member:
             return Debt.objects.none()
 
-        debts = Debt.objects.filter(
+        return Debt.objects.filter(
             household_id=household_id,
-            is_paid=False
+            is_paid=False,
         ).filter(
-            from_user=current_user
-        ) | Debt.objects.filter(
-            household_id=household_id,
-            is_paid=False
-        ).filter(
-            to_user=current_user
-        )
-
-        debts = debts.select_related(
+            Q(from_user=current_user) | Q(to_user=current_user)
+        ).select_related(
             'from_user',
             'to_user',
             'household',
             'expense',
-        )
-
-        balance_map = defaultdict(float)
-
-        for debt in debts:
-            key = (
-                debt.from_user_id,
-                debt.to_user_id,
-            )
-
-            reverse_key = (
-                debt.to_user_id,
-                debt.from_user_id,
-            )
-
-            if reverse_key in balance_map:
-                balance_map[reverse_key] -= float(debt.amount)
-            else:
-                balance_map[key] += float(debt.amount)
-
-        final_debts = []
-
-        for (from_user_id, to_user_id), amount in balance_map.items():
-            if amount <= 0:
-                continue
-
-            debt = debts.filter(
-                from_user_id=from_user_id,
-                to_user_id=to_user_id,
-            ).first()
-
-            if debt:
-                debt.amount = amount
-                final_debts.append(debt)
-
-        return final_debts
+        ).prefetch_related(
+            'payments',
+        ).order_by('-created_at')

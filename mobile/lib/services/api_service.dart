@@ -811,6 +811,110 @@ class ApiService {
     );
   }
 
+
+  static Future<Map<String, dynamic>> markDebtPaid(
+    String debtId, {
+    String note = '',
+  }) async {
+    try {
+      final response = await dio.post(
+        '/payments/debts/$debtId/mark-paid/',
+        data: {
+          'note': note,
+        },
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể gửi yêu cầu thanh toán';
+    }
+  }
+
+  static Future<Map<String, dynamic>> confirmPayment(
+    String paymentId, {
+    String note = '',
+  }) async {
+    try {
+      final response = await dio.post(
+        '/payments/$paymentId/confirm/',
+        data: {
+          'note': note,
+        },
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể xác nhận thanh toán';
+    }
+  }
+
+  static Future<Map<String, dynamic>> rejectPayment(
+    String paymentId, {
+    String note = '',
+  }) async {
+    try {
+      final response = await dio.post(
+        '/payments/$paymentId/reject/',
+        data: {
+          'note': note,
+        },
+      );
+
+      return Map<String, dynamic>.from(
+        response.data,
+      );
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể từ chối thanh toán';
+    }
+  }
+
+  static Future<Map<String, dynamic>> getPendingPayments({
+    int page = 1,
+  }) async {
+    try {
+      final response = await dio.get(
+        '/payments/pending/?page=$page',
+      );
+
+      final data = response.data;
+
+      if (data is List) {
+        return {
+          'results': List<dynamic>.from(data),
+          'next': null,
+        };
+      }
+
+      if (data is Map) {
+        return {
+          'results': List<dynamic>.from(
+            data['results'] ?? [],
+          ),
+          'next': data['next'],
+        };
+      }
+
+      return {
+        'results': <dynamic>[],
+        'next': null,
+      };
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải yêu cầu thanh toán';
+    }
+  }
+
   static String _extractErrorMessage(dynamic data) {
     if (data == null) {
       return '';
