@@ -1,22 +1,28 @@
 import 'package:flutter/material.dart';
 
 import 'activity_screen.dart';
+import 'add_expense_screen.dart';
 import 'app_theme.dart';
 import 'home_screen.dart';
-import 'services/api_service.dart';
+import 'models/household.dart';
 import 'profile_screen.dart';
+import 'services/api_service.dart';
 
 class BottomNavScreen extends StatefulWidget {
   const BottomNavScreen({super.key});
 
   @override
-  State<BottomNavScreen> createState() => _BottomNavScreenState();
+  State<BottomNavScreen> createState() =>
+      _BottomNavScreenState();
 }
 
-class _BottomNavScreenState extends State<BottomNavScreen> {
+class _BottomNavScreenState
+    extends State<BottomNavScreen> {
   int currentIndex = 0;
 
   int unreadNotificationCount = 0;
+  bool isOpeningQuickAddExpense = false;
+
   late final List<Widget> screens;
 
   @override
@@ -26,7 +32,7 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
     screens = const [
       HomeScreen(),
       ActivityScreen(),
-      AddExpenseEntryScreen(),
+      SizedBox.shrink(),
       DebtOverviewScreen(),
       ProfileScreen(),
     ];
@@ -36,7 +42,8 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
 
   Future<void> loadUnreadCount() async {
     try {
-      final count = await ApiService.getUnreadNotificationCount();
+      final count =
+          await ApiService.getUnreadNotificationCount();
 
       if (!mounted) return;
 
@@ -47,6 +54,11 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
   }
 
   Future<void> changeTab(int index) async {
+    if (index == 2) {
+      await openQuickAddExpense();
+      return;
+    }
+
     setState(() {
       currentIndex = index;
     });
@@ -56,9 +68,356 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
     }
   }
 
+  Future<void> openQuickAddExpense() async {
+    if (isOpeningQuickAddExpense) return;
+
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      isOpeningQuickAddExpense = true;
+    });
+
+    try {
+      final households = await loadHouseholdsForQuickAdd();
+
+      if (!mounted) return;
+
+      if (households.isEmpty) {
+        await showNoHouseholdDialog();
+        return;
+      }
+
+      Household? selectedHousehold;
+
+      if (households.length == 1) {
+        selectedHousehold = households.first;
+      } else {
+        selectedHousehold =
+            await showHouseholdPicker(households);
+      }
+
+      if (!mounted || selectedHousehold == null) return;
+
+      final householdData =
+          await ApiService.getHouseholdDetail(
+        selectedHousehold.id,
+      );
+
+      if (!mounted) return;
+
+      final freshHousehold = Household.fromJson(
+        Map<String, dynamic>.from(householdData),
+      );
+
+      setState(() {
+        isOpeningQuickAddExpense = false;
+      });
+
+      final result = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AddExpenseScreen(
+            household: freshHousehold,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (result == true) {
+        ScaffoldMessenger.of(context)
+            .hideCurrentSnackBar();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Đã thêm khoản chi'),
+          ),
+        );
+
+        if (currentIndex == 1) {
+          await loadUnreadCount();
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      showQuickAddError(
+        getErrorMessage(e),
+      );
+    } finally {
+      if (mounted && isOpeningQuickAddExpense) {
+        setState(() {
+          isOpeningQuickAddExpense = false;
+        });
+      }
+    }
+  }
+
+  Future<List<Household>>
+      loadHouseholdsForQuickAdd() async {
+    final response = await ApiService.getHouseholds();
+
+    return response
+        .whereType<Map>()
+        .map(
+          (item) => Household.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
+        .where((household) => household.isActive)
+        .toList();
+  }
+
+  Future<Household?> showHouseholdPicker(
+    List<Household> households,
+  ) {
+    return showModalBottomSheet<Household>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.all(14),
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              16,
+              18,
+              18,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: 0.12,
+                  ),
+                  blurRadius: 30,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius:
+                        BorderRadius.circular(999),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Thêm khoản chi vào nhóm nào?',
+                    style: TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Chọn nhóm để tạo khoản chi mới.',
+                    style: TextStyle(
+                      color: AppColors.textLight,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: households.length,
+                    separatorBuilder: (_, _) =>
+                        const SizedBox(height: 10),
+                    itemBuilder: (_, index) {
+                      final household =
+                          households[index];
+
+                      return InkWell(
+                        borderRadius:
+                            BorderRadius.circular(20),
+                        onTap: () {
+                          Navigator.pop(
+                            sheetContext,
+                            household,
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius:
+                                BorderRadius.circular(20),
+                            border: Border.all(
+                              color: AppColors.border,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary
+                                      .withValues(
+                                    alpha: 0.10,
+                                  ),
+                                  borderRadius:
+                                      BorderRadius.circular(
+                                    18,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.groups_rounded,
+                                  color: AppColors.primary,
+                                  size: 26,
+                                ),
+                              ),
+                              const SizedBox(width: 13),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment
+                                          .start,
+                                  children: [
+                                    Text(
+                                      household.name
+                                              .trim()
+                                              .isEmpty
+                                          ? 'Nhóm không tên'
+                                          : household.name,
+                                      maxLines: 1,
+                                      overflow:
+                                          TextOverflow
+                                              .ellipsis,
+                                      style: const TextStyle(
+                                        color:
+                                            AppColors.textDark,
+                                        fontSize: 16,
+                                        fontWeight:
+                                            FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      household.members
+                                              .isEmpty
+                                          ? 'Nhấn để chọn nhóm'
+                                          : '${household.members.length} thành viên',
+                                      style:
+                                          const TextStyle(
+                                        color: AppColors
+                                            .textLight,
+                                        fontSize: 13,
+                                        fontWeight:
+                                            FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                color: AppColors.textLight,
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> showNoHouseholdDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text(
+            'Bạn chưa có nhóm nào',
+          ),
+          content: const Text(
+            'Hãy tạo hoặc tham gia một nhóm trước khi thêm khoản chi.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Để sau'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+
+                if (!mounted) return;
+
+                setState(() {
+                  currentIndex = 0;
+                });
+              },
+              child: const Text('Về Trang chủ'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void showQuickAddError(String message) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(
+          label: 'Thử lại',
+          onPressed: openQuickAddExpense,
+        ),
+      ),
+    );
+  }
+
+  String getErrorMessage(Object error) {
+    final message = error.toString();
+
+    if (message.startsWith('Exception: ')) {
+      return message.replaceFirst('Exception: ', '');
+    }
+
+    if (message.trim().isEmpty) {
+      return 'Không thể mở màn hình thêm khoản chi';
+    }
+
+    return message;
+  }
+
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       extendBody: true,
       body: IndexedStack(
@@ -68,8 +427,13 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
-          height: 86,
-          margin: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+          height: 100,
+          margin: const EdgeInsets.fromLTRB(
+            18,
+            0,
+            18,
+            14,
+          ),
           padding: const EdgeInsets.symmetric(
             horizontal: 10,
             vertical: 8,
@@ -79,14 +443,17 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: Colors.black.withValues(
+                  alpha: 0.08,
+                ),
                 blurRadius: 28,
                 offset: const Offset(0, 12),
               ),
             ],
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
             children: [
               buildNavItem(
                 index: 0,
@@ -118,19 +485,18 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
   }
 
   Widget buildCenterButton() {
-    final isActive = currentIndex == 2;
-
     return Expanded(
       child: GestureDetector(
-        onTap: () => changeTab(2),
+        onTap: openQuickAddExpense,
         behavior: HitTestBehavior.opaque,
         child: Transform.translate(
-          offset: const Offset(0, -18),
+          offset: const Offset(0, -10),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
+                duration:
+                    const Duration(milliseconds: 220),
                 width: 58,
                 height: 58,
                 decoration: BoxDecoration(
@@ -138,26 +504,46 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.32),
+                      color: AppColors.primary
+                          .withValues(alpha: 0.32),
                       blurRadius: 22,
                       offset: const Offset(0, 10),
                     ),
                   ],
                 ),
-                child: const Icon(
-                  Icons.add_rounded,
-                  color: Colors.white,
-                  size: 34,
+                child: AnimatedSwitcher(
+                  duration:
+                      const Duration(milliseconds: 180),
+                  child: isOpeningQuickAddExpense
+                      ? const SizedBox(
+                          key: ValueKey('loading'),
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.6,
+                            valueColor:
+                                AlwaysStoppedAnimation<
+                                    Color>(
+                              Colors.white,
+                            ),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.add_rounded,
+                          key: ValueKey('add'),
+                          color: Colors.white,
+                          size: 34,
+                        ),
                 ),
               ),
               const SizedBox(height: 6),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                width: isActive ? 6 : 0,
-                height: isActive ? 6 : 0,
-                decoration: const BoxDecoration(
+              const Text(
+                'Thêm',
+                style: TextStyle(
                   color: AppColors.primary,
-                  shape: BoxShape.circle,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.1,
                 ),
               ),
             ],
@@ -180,19 +566,24 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
         onTap: () => changeTab(index),
         behavior: HitTestBehavior.opaque,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment:
+              MainAxisAlignment.center,
           children: [
             Stack(
               clipBehavior: Clip.none,
               children: [
                 AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
+                  duration:
+                      const Duration(milliseconds: 220),
                   padding: const EdgeInsets.all(9),
                   decoration: BoxDecoration(
                     color: isActive
-                        ? AppColors.primary.withValues(alpha: 0.10)
+                        ? AppColors.primary.withValues(
+                            alpha: 0.10,
+                          )
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius:
+                        BorderRadius.circular(16),
                   ),
                   child: Icon(
                     icon,
@@ -202,7 +593,6 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
                         : AppColors.textLight,
                   ),
                 ),
-
                 if (badgeCount > 0)
                   Positioned(
                     top: -4,
@@ -217,7 +607,8 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
                       ),
                       decoration: BoxDecoration(
                         color: Colors.red,
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius:
+                            BorderRadius.circular(999),
                         border: Border.all(
                           color: Colors.white,
                           width: 2,
@@ -241,7 +632,8 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
             ),
             const SizedBox(height: 5),
             AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 220),
+              duration:
+                  const Duration(milliseconds: 220),
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: isActive
@@ -260,7 +652,8 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
             ),
             const SizedBox(height: 4),
             AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
+              duration:
+                  const Duration(milliseconds: 220),
               width: isActive ? 5 : 0,
               height: isActive ? 5 : 0,
               decoration: const BoxDecoration(
@@ -271,20 +664,6 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class AddExpenseEntryScreen extends StatelessWidget {
-  const AddExpenseEntryScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const _SimpleFeatureScreen(
-      title: 'Thêm chi tiêu',
-      icon: Icons.add_rounded,
-      description:
-          'Chọn một nhóm ở Trang chủ để thêm khoản chi vào nhóm đó.',
     );
   }
 }
@@ -337,7 +716,9 @@ class _SimpleFeatureScreen extends StatelessWidget {
                 width: 72,
                 height: 72,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.10),
+                  color: AppColors.primary.withValues(
+                    alpha: 0.10,
+                  ),
                   borderRadius: BorderRadius.circular(24),
                 ),
                 child: Icon(
