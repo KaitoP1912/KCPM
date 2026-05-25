@@ -13,6 +13,9 @@ from households.views import (
     LeaveHouseholdView,
     MyDebtDetailView,
     MyDebtSummaryView,
+    SettleVirtualMemberDebtPairView,
+    VirtualMemberDebtDetailView,
+    VirtualMemberDebtSummaryView,
 )
 
 urlpatterns = [
@@ -69,6 +72,31 @@ urlpatterns = [
     path(
         '<uuid:household_id>/my-debts/<int:other_user_id>/',
         MyDebtDetailView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/my-debts/<int:other_user_id>/',
+        MyDebtDetailView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/virtual-members/<int:virtual_user_id>/debts/',
+        VirtualMemberDebtSummaryView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/virtual-members/<int:virtual_user_id>/debts/<int:other_user_id>/',
+        VirtualMemberDebtDetailView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/virtual-members/<int:virtual_user_id>/debts/<int:other_user_id>/settle/',
+        SettleVirtualMemberDebtPairView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/activities/',
+        ActivityListView.as_view(),
     ),
 
     path(

@@ -1116,4 +1116,57 @@ class ApiService {
       throw 'Không thể tải chi tiết công nợ';
     }
   }
+
+  static Future<Map<String, dynamic>> getVirtualMemberDebts({
+    required String householdId,
+    required int virtualUserId,
+  }) async {
+    try {
+      final response = await dio.get(
+        '/households/$householdId/virtual-members/$virtualUserId/debts/',
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải công nợ thành viên ảo';
+    }
+  }
+
+  static Future<Map<String, dynamic>> getVirtualMemberDebtDetail({
+    required String householdId,
+    required int virtualUserId,
+    required int otherUserId,
+  }) async {
+    try {
+      final response = await dio.get(
+        '/households/$householdId/virtual-members/$virtualUserId/debts/$otherUserId/',
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải chi tiết công nợ thành viên ảo';
+    }
+  }
+
+  static Future<Map<String, dynamic>> settleVirtualMemberDebtPair({
+    required String householdId,
+    required int virtualUserId,
+    required int otherUserId,
+  }) async {
+    try {
+      final response = await dio.post(
+        '/households/$householdId/virtual-members/$virtualUserId/debts/$otherUserId/settle/',
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể đánh dấu xử lý công nợ';
+    }
+  }
 }

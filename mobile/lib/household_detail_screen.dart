@@ -45,6 +45,13 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
   bool isLoadingDebtDetail = false;
   int? loadingDebtDetailUserId;
 
+  Map<String, dynamic>? virtualDebtSummary;
+  int? selectedVirtualUserId;
+  bool isLoadingVirtualDebt = false;
+  bool isLoadingVirtualDebtDetail = false;
+  bool isSettlingVirtualDebt = false;
+  int? loadingVirtualDebtDetailUserId;
+
   double totalExpense = 0;
 
   String currentUserEmail = '';
@@ -86,6 +93,54 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
           member.userEmail.trim().toLowerCase() ==
               currentUserEmail,
     );
+  }
+
+  bool isVirtualMember(dynamic member) {
+    final email = getMemberEmail(member)
+        .trim()
+        .toLowerCase();
+
+    return email.endsWith('@virtual.chungvi.local');
+  }
+
+  int getMemberUserId(dynamic member) {
+    try {
+      final value = member.user;
+
+      if (value is int) return value;
+
+      return int.tryParse(value.toString()) ?? 0;
+    } catch (_) {}
+
+    try {
+      final value = member.userId;
+
+      if (value is int) return value;
+
+      return int.tryParse(value.toString()) ?? 0;
+    } catch (_) {}
+
+    return 0;
+  }
+
+  List<dynamic> get virtualMembers {
+    return household.members
+        .where((member) => isVirtualMember(member))
+        .toList();
+  }
+
+  dynamic get selectedVirtualMember {
+    if (selectedVirtualUserId == null) {
+      return null;
+    }
+
+    for (final member in virtualMembers) {
+      if (getMemberUserId(member) == selectedVirtualUserId) {
+        return member;
+      }
+    }
+
+    return null;
   }
 
   Future<void> loadData() async {
@@ -171,6 +226,8 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
         isLoading = false;
         errorMessage = null;
       });
+
+      await loadVirtualMemberDebtSummary();
     } catch (e) {
       debugPrint(e.toString());
 
@@ -185,6 +242,72 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
 
   Future<void> refreshData() async {
     await loadData();
+  }
+
+  Future<void> loadVirtualMemberDebtSummary() async {
+    if (!mounted) return;
+
+    if (!isCurrentUserOwner || virtualMembers.isEmpty) {
+      setState(() {
+        virtualDebtSummary = null;
+        selectedVirtualUserId = null;
+        isLoadingVirtualDebt = false;
+      });
+
+      return;
+    }
+
+    int targetUserId = selectedVirtualUserId ??
+        getMemberUserId(virtualMembers.first);
+
+    final exists = virtualMembers.any(
+      (member) => getMemberUserId(member) == targetUserId,
+    );
+
+    if (!exists) {
+      targetUserId = getMemberUserId(virtualMembers.first);
+    }
+
+    if (targetUserId <= 0) {
+      setState(() {
+        virtualDebtSummary = null;
+        selectedVirtualUserId = null;
+        isLoadingVirtualDebt = false;
+      });
+
+      return;
+    }
+
+    setState(() {
+      selectedVirtualUserId = targetUserId;
+      isLoadingVirtualDebt = true;
+    });
+
+    try {
+      final response = await ApiService.getVirtualMemberDebts(
+        householdId: household.id,
+        virtualUserId: targetUserId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        virtualDebtSummary = response;
+        isLoadingVirtualDebt = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingVirtualDebt = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    }
   }
 
   Future<void> loadMoreExpenses() async {
@@ -1992,6 +2115,738 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
     );
   }
 
+  Widget buildVirtualMemberDebtSection() {
+    final summary = virtualDebtSummary ?? {};
+
+    final selectedMemberName = selectedVirtualMember == null
+        ? 'Thành viên ảo'
+        : getMemberName(selectedVirtualMember);
+
+    final virtualName =
+        summary['virtual_name']?.toString() ?? selectedMemberName;
+
+    final totalVirtualOwes = readDouble(
+      summary['total_virtual_owes'],
+    );
+
+    final totalOwedToVirtual = readDouble(
+      summary['total_owed_to_virtual'],
+    );
+
+    final virtualOwes = readMapList(
+      summary['virtual_owes'],
+    );
+
+    final owedToVirtual = readMapList(
+      summary['owed_to_virtual'],
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Quản lý công nợ thành viên ảo',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Chủ nhóm có thể xem công nợ giùm từng thành viên ảo.',
+            style: TextStyle(
+              color: AppColors.textLight,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          DropdownButtonFormField<int>(
+            initialValue: selectedVirtualUserId,
+            decoration: InputDecoration(
+              labelText: 'Chọn thành viên ảo',
+              filled: true,
+              fillColor: AppColors.background,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            items: virtualMembers.map<DropdownMenuItem<int>>(
+              (member) {
+                return DropdownMenuItem<int>(
+                  value: getMemberUserId(member),
+                  child: Text(getMemberName(member)),
+                );
+              },
+            ).toList(),
+            onChanged: isLoadingVirtualDebt
+                ? null
+                : (value) async {
+                    if (value == null) return;
+
+                    setState(() {
+                      selectedVirtualUserId = value;
+                    });
+
+                    await loadVirtualMemberDebtSummary();
+                  },
+          ),
+
+          const SizedBox(height: 18),
+
+          if (isLoadingVirtualDebt)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: buildDebtSummaryBox(
+                    title: '$virtualName cần trả',
+                    amount: totalVirtualOwes,
+                    icon: Icons.call_made_rounded,
+                    color: AppColors.warning,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: buildDebtSummaryBox(
+                    title: '$virtualName được nhận',
+                    amount: totalOwedToVirtual,
+                    icon: Icons.call_received_rounded,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            if (virtualOwes.isEmpty && owedToVirtual.isEmpty)
+              buildEmptyCard(
+                icon: Icons.check_circle_outline,
+                title: '$virtualName chưa có công nợ',
+              )
+            else ...[
+              if (virtualOwes.isNotEmpty) ...[
+                buildDebtGroupTitle(
+                  title: '$virtualName đang nợ',
+                  icon: Icons.call_made_rounded,
+                  color: AppColors.warning,
+                ),
+                const SizedBox(height: 10),
+                ...virtualOwes.map(
+                  (item) => buildVirtualDebtRow(
+                    item,
+                    virtualOwes: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (owedToVirtual.isNotEmpty) ...[
+                buildDebtGroupTitle(
+                  title: 'Đang nợ $virtualName',
+                  icon: Icons.call_received_rounded,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(height: 10),
+                ...owedToVirtual.map(
+                  (item) => buildVirtualDebtRow(
+                    item,
+                    virtualOwes: false,
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget buildVirtualDebtRow(
+    Map<String, dynamic> item, {
+    required bool virtualOwes,
+  }) {
+    final name = item['other_name']?.toString() ?? 'Thành viên';
+    final avatar = item['other_avatar']?.toString() ?? '';
+    final amount = readDouble(item['amount']);
+    final expenseCount = readInt(item['expense_count']);
+    final otherUserId = readInt(item['other_user_id']);
+
+    final isLoadingThis =
+        isLoadingVirtualDebtDetail &&
+        loadingVirtualDebtDetailUserId == otherUserId;
+
+    final color = virtualOwes
+        ? AppColors.warning
+        : AppColors.primary;
+
+    return InkWell(
+      onTap: isLoadingVirtualDebtDetail
+          ? null
+          : () => openVirtualDebtDetail(item),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            buildAvatar(
+              imageUrl: avatar,
+              name: name,
+              radius: 22,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      if (item['other_is_virtual'] == true)
+                        Container(
+                          margin: const EdgeInsets.only(left: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(
+                              alpha: 0.10,
+                            ),
+                            borderRadius:
+                                BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Ảo',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    expenseCount <= 0
+                        ? 'Nhấn để xem chi tiết'
+                        : '$expenseCount khoản phát sinh',
+                    style: const TextStyle(
+                      color: AppColors.textLight,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (isLoadingThis)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                    ),
+                  )
+                else
+                  Text(
+                    '${formatMoney(amount)}đ',
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                const SizedBox(height: 4),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: color,
+                  size: 20,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> openVirtualDebtDetail(
+    Map<String, dynamic> item,
+  ) async {
+    final virtualUserId = selectedVirtualUserId;
+    final otherUserId = readInt(item['other_user_id']);
+
+    if (virtualUserId == null ||
+        virtualUserId <= 0 ||
+        otherUserId <= 0 ||
+        isLoadingVirtualDebtDetail) {
+      return;
+    }
+
+    setState(() {
+      isLoadingVirtualDebtDetail = true;
+      loadingVirtualDebtDetailUserId = otherUserId;
+    });
+
+    try {
+      final response =
+          await ApiService.getVirtualMemberDebtDetail(
+        householdId: household.id,
+        virtualUserId: virtualUserId,
+        otherUserId: otherUserId,
+      );
+
+      if (!mounted) return;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) {
+          return buildVirtualDebtDetailSheet(
+            Map<String, dynamic>.from(response),
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoadingVirtualDebtDetail = false;
+          loadingVirtualDebtDetailUserId = null;
+        });
+      }
+    }
+  }
+
+  Widget buildVirtualDebtDetailSheet(
+    Map<String, dynamic> detail,
+  ) {
+    final virtualName =
+        detail['virtual_name']?.toString() ?? 'Thành viên ảo';
+    final otherName =
+        detail['other_name']?.toString() ?? 'Thành viên';
+
+    final netDirection =
+        detail['net_direction']?.toString() ?? '';
+
+    final netAmount = readDouble(
+      detail['net_amount'],
+    );
+
+    final items = readMapList(
+      detail['items'],
+    );
+
+    final isVirtualOwes = netDirection == 'virtual_owes';
+    final isOwedToVirtual =
+        netDirection == 'owed_to_virtual';
+
+    String summaryText;
+
+    if (isVirtualOwes) {
+      summaryText =
+          '$virtualName cần trả $otherName ${formatMoney(netAmount)}đ';
+    } else if (isOwedToVirtual) {
+      summaryText =
+          '$otherName cần trả $virtualName ${formatMoney(netAmount)}đ';
+    } else {
+      summaryText =
+          '$virtualName và $otherName không còn chênh lệch công nợ.';
+    }
+
+    final summaryColor = isVirtualOwes
+        ? AppColors.warning
+        : AppColors.primary;
+
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(
+          18,
+          16,
+          18,
+          18,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 30,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        constraints: BoxConstraints(
+          maxHeight:
+              MediaQuery.of(context).size.height * 0.82,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            Text(
+              'Công nợ của $virtualName',
+              style: const TextStyle(
+                color: AppColors.textDark,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.4,
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: summaryColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: summaryColor.withValues(alpha: 0.16),
+                ),
+              ),
+              child: Text(
+                summaryText,
+                style: TextStyle(
+                  color: summaryColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  height: 1.35,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 18),
+
+            const Text(
+              'Chi tiết phát sinh',
+              style: TextStyle(
+                color: AppColors.textDark,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            if (items.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    'Không có khoản phát sinh.',
+                    style: TextStyle(
+                      color: AppColors.textLight,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) =>
+                      const SizedBox(height: 10),
+                  itemBuilder: (_, index) {
+                    return buildVirtualDebtDetailItem(
+                      items[index],
+                      virtualName,
+                      otherName,
+                    );
+                  },
+                ),
+              ),
+
+            if (items.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: isSettlingVirtualDebt
+                      ? null
+                      : () => settleVirtualDebtPair(detail),
+                  icon: isSettlingVirtualDebt
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.done_all_rounded),
+                  label: Text(
+                    isSettlingVirtualDebt
+                        ? 'Đang xử lý...'
+                        : 'Đánh dấu đã xử lý ngoài đời',
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget buildVirtualDebtDetailItem(
+    Map<String, dynamic> item,
+    String virtualName,
+    String otherName,
+  ) {
+    final title =
+        item['expense_title']?.toString() ?? 'Khoản chi';
+    final date =
+        item['expense_date']?.toString() ?? '';
+    final payerName =
+        item['payer_name']?.toString() ?? '';
+    final direction =
+        item['direction']?.toString() ?? '';
+    final amount = readDouble(
+      item['amount'],
+    );
+
+    final isVirtualOwes = direction == 'virtual_owes';
+
+    final label = isVirtualOwes
+        ? '$virtualName nợ $otherName'
+        : '$otherName nợ $virtualName';
+
+    final color = isVirtualOwes
+        ? AppColors.warning
+        : AppColors.primary;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: AppColors.border,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              isVirtualOwes
+                  ? Icons.call_made_rounded
+                  : Icons.call_received_rounded,
+              color: color,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textDark,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (payerName.isNotEmpty)
+                      'Người trả: $payerName',
+                    if (date.isNotEmpty) date,
+                  ].join(' • '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '${formatMoney(amount)}đ',
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> settleVirtualDebtPair(
+    Map<String, dynamic> detail,
+  ) async {
+    final virtualUserId = readInt(
+      detail['virtual_user_id'],
+    );
+
+    final otherUserId = readInt(
+      detail['other_user_id'],
+    );
+
+    if (virtualUserId <= 0 || otherUserId <= 0) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Đã xử lý ngoài đời?'),
+          content: const Text(
+            'Các khoản công nợ chưa thanh toán giữa hai thành viên này sẽ được đánh dấu là đã xử lý. Hành động này không thể hoàn tác nhanh.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Xác nhận'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      isSettlingVirtualDebt = true;
+    });
+
+    try {
+      await ApiService.settleVirtualMemberDebtPair(
+        householdId: household.id,
+        virtualUserId: virtualUserId,
+        otherUserId: otherUserId,
+      );
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã đánh dấu xử lý ngoài đời'),
+        ),
+      );
+
+      await loadData();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSettlingVirtualDebt = false;
+        });
+      }
+    }
+  }
+
   Widget buildCompactDebtCard(Debt debt) {
     final fromName = displayUserName(
       name: debt.fromUserName,
@@ -2576,6 +3431,10 @@ class _HouseholdDetailScreenState extends State<HouseholdDetailScreen> {
             buildMembersSection(),
             const SizedBox(height: 30),
             buildDebtSection(),
+            if (isCurrentUserOwner && virtualMembers.isNotEmpty) ...[
+              const SizedBox(height: 30),
+              buildVirtualMemberDebtSection(),
+            ],
             const SizedBox(height: 30),
             if (expenses.isEmpty)
               SizedBox(

@@ -56,6 +56,8 @@ def make_virtual_email(household):
         f'{VIRTUAL_MEMBER_EMAIL_DOMAIN}'
     )
 
+
+
 def money_to_int(amount):
     if amount is None:
         return 0
@@ -78,6 +80,66 @@ def serialize_debt_user(user, request=None):
         'other_avatar': avatar_url,
         'is_virtual': is_virtual_user(user),
     }
+
+def get_owner_household_or_response(request, household_id):
+    household = Household.objects.filter(
+        id=household_id,
+        is_active=True,
+        members__user=request.user,
+    ).distinct().first()
+
+    if not household:
+        return None, Response(
+            {
+                'detail':
+                'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    is_owner = HouseholdMember.objects.filter(
+        household=household,
+        user=request.user,
+        role=HouseholdMember.Role.OWNER,
+    ).exists()
+
+    if not is_owner:
+        return None, Response(
+            {
+                'detail':
+                'Chỉ chủ nhóm mới được xem công nợ của thành viên ảo.'
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    return household, None
+
+
+def get_virtual_user_or_response(household, virtual_user_id):
+    membership = HouseholdMember.objects.filter(
+        household=household,
+        user_id=virtual_user_id,
+    ).select_related(
+        'user',
+    ).first()
+
+    if not membership:
+        return None, Response(
+            {
+                'detail': 'Thành viên này không thuộc nhóm.'
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if not is_virtual_user(membership.user):
+        return None, Response(
+            {
+                'detail': 'Chỉ được xem giùm thành viên ảo.'
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return membership.user, None
 
 
 class HouseholdListCreateView(
@@ -1048,6 +1110,362 @@ class MyDebtDetailView(APIView):
                 'total_i_owe': total_i_owe,
                 'total_owed_to_me': total_owed_to_me,
                 'items': items,
+            },
+            status=status.HTTP_200_OK,
+        )
+    
+class VirtualMemberDebtSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, household_id, virtual_user_id):
+        household, error_response = get_owner_household_or_response(
+            request,
+            household_id,
+        )
+
+        if error_response:
+            return error_response
+
+        virtual_user, error_response = get_virtual_user_or_response(
+            household,
+            virtual_user_id,
+        )
+
+        if error_response:
+            return error_response
+
+        debts = Debt.objects.filter(
+            household=household,
+            is_paid=False,
+        ).filter(
+            Q(from_user=virtual_user) |
+            Q(to_user=virtual_user)
+        ).select_related(
+            'from_user',
+            'to_user',
+            'expense',
+        )
+
+        pair_map = {}
+
+        for debt in debts:
+            if debt.from_user_id == virtual_user.id:
+                other_user = debt.to_user
+                direction = 'virtual_owes'
+            else:
+                other_user = debt.from_user
+                direction = 'owed_to_virtual'
+
+            if other_user.id not in pair_map:
+                user_data = serialize_debt_user(
+                    other_user,
+                    request,
+                )
+
+                pair_map[other_user.id] = {
+                    'other_user_id': user_data['other_user_id'],
+                    'other_name': user_data['other_name'],
+                    'other_email': user_data['other_email'],
+                    'other_avatar': user_data['other_avatar'],
+                    'other_is_virtual': user_data['is_virtual'],
+                    'virtual_owes_amount': 0,
+                    'owed_to_virtual_amount': 0,
+                    'expense_ids': set(),
+                }
+
+            amount = money_to_int(debt.amount)
+
+            if direction == 'virtual_owes':
+                pair_map[other_user.id][
+                    'virtual_owes_amount'
+                ] += amount
+            else:
+                pair_map[other_user.id][
+                    'owed_to_virtual_amount'
+                ] += amount
+
+            pair_map[other_user.id]['expense_ids'].add(
+                str(debt.expense_id)
+            )
+
+        virtual_owes = []
+        owed_to_virtual = []
+
+        total_virtual_owes = 0
+        total_owed_to_virtual = 0
+
+        for item in pair_map.values():
+            net_amount = (
+                item['virtual_owes_amount'] -
+                item['owed_to_virtual_amount']
+            )
+
+            if net_amount == 0:
+                continue
+
+            response_item = {
+                'other_user_id': item['other_user_id'],
+                'other_name': item['other_name'],
+                'other_email': item['other_email'],
+                'other_avatar': item['other_avatar'],
+                'other_is_virtual': item['other_is_virtual'],
+                'amount': abs(net_amount),
+                'expense_count': len(item['expense_ids']),
+            }
+
+            if net_amount > 0:
+                total_virtual_owes += net_amount
+                virtual_owes.append(response_item)
+            else:
+                total_owed_to_virtual += abs(net_amount)
+                owed_to_virtual.append(response_item)
+
+        virtual_owes.sort(
+            key=lambda item: item['amount'],
+            reverse=True,
+        )
+
+        owed_to_virtual.sort(
+            key=lambda item: item['amount'],
+            reverse=True,
+        )
+
+        return Response(
+            {
+                'household_id': str(household.id),
+                'virtual_user_id': virtual_user.id,
+                'virtual_name': get_user_display_name(
+                    virtual_user
+                ),
+                'virtual_email': virtual_user.email,
+                'total_virtual_owes': total_virtual_owes,
+                'total_owed_to_virtual': total_owed_to_virtual,
+                'virtual_owes': virtual_owes,
+                'owed_to_virtual': owed_to_virtual,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class VirtualMemberDebtDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(
+        self,
+        request,
+        household_id,
+        virtual_user_id,
+        other_user_id,
+    ):
+        household, error_response = get_owner_household_or_response(
+            request,
+            household_id,
+        )
+
+        if error_response:
+            return error_response
+
+        virtual_user, error_response = get_virtual_user_or_response(
+            household,
+            virtual_user_id,
+        )
+
+        if error_response:
+            return error_response
+
+        other_membership = HouseholdMember.objects.filter(
+            household=household,
+            user_id=other_user_id,
+        ).select_related(
+            'user',
+        ).first()
+
+        if not other_membership:
+            return Response(
+                {
+                    'detail': 'Người này không thuộc nhóm.'
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        other_user = other_membership.user
+
+        debts = Debt.objects.filter(
+            household=household,
+            is_paid=False,
+        ).filter(
+            Q(
+                from_user=virtual_user,
+                to_user=other_user,
+            ) |
+            Q(
+                from_user=other_user,
+                to_user=virtual_user,
+            )
+        ).select_related(
+            'from_user',
+            'to_user',
+            'expense',
+            'expense__payer',
+        ).order_by(
+            '-created_at',
+        )
+
+        total_virtual_owes = 0
+        total_owed_to_virtual = 0
+        items = []
+
+        for debt in debts:
+            amount = money_to_int(debt.amount)
+
+            if debt.from_user_id == virtual_user.id:
+                direction = 'virtual_owes'
+                total_virtual_owes += amount
+            else:
+                direction = 'owed_to_virtual'
+                total_owed_to_virtual += amount
+
+            items.append(
+                {
+                    'debt_id': str(debt.id),
+                    'expense_id': str(debt.expense_id),
+                    'expense_title': debt.expense.title,
+                    'expense_date': (
+                        debt.expense.expense_date.isoformat()
+                        if debt.expense.expense_date
+                        else ''
+                    ),
+                    'payer_name': get_user_display_name(
+                        debt.expense.payer
+                    ),
+                    'from_user_name': get_user_display_name(
+                        debt.from_user
+                    ),
+                    'to_user_name': get_user_display_name(
+                        debt.to_user
+                    ),
+                    'direction': direction,
+                    'amount': amount,
+                }
+            )
+
+        net_amount = total_virtual_owes - total_owed_to_virtual
+
+        if net_amount > 0:
+            net_direction = 'virtual_owes'
+        elif net_amount < 0:
+            net_direction = 'owed_to_virtual'
+        else:
+            net_direction = 'settled'
+
+        other_user_data = serialize_debt_user(
+            other_user,
+            request,
+        )
+
+        return Response(
+            {
+                'household_id': str(household.id),
+                'virtual_user_id': virtual_user.id,
+                'virtual_name': get_user_display_name(
+                    virtual_user
+                ),
+                'other_user_id': other_user.id,
+                'other_name': other_user_data['other_name'],
+                'other_email': other_user_data['other_email'],
+                'other_avatar': other_user_data['other_avatar'],
+                'other_is_virtual': other_user_data['is_virtual'],
+                'net_direction': net_direction,
+                'net_amount': abs(net_amount),
+                'total_virtual_owes': total_virtual_owes,
+                'total_owed_to_virtual': total_owed_to_virtual,
+                'items': items,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SettleVirtualMemberDebtPairView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(
+        self,
+        request,
+        household_id,
+        virtual_user_id,
+        other_user_id,
+    ):
+        household, error_response = get_owner_household_or_response(
+            request,
+            household_id,
+        )
+
+        if error_response:
+            return error_response
+
+        virtual_user, error_response = get_virtual_user_or_response(
+            household,
+            virtual_user_id,
+        )
+
+        if error_response:
+            return error_response
+
+        other_membership = HouseholdMember.objects.filter(
+            household=household,
+            user_id=other_user_id,
+        ).select_related(
+            'user',
+        ).first()
+
+        if not other_membership:
+            return Response(
+                {
+                    'detail': 'Người này không thuộc nhóm.'
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        other_user = other_membership.user
+
+        debts = list(
+            Debt.objects.select_for_update().filter(
+                household=household,
+                is_paid=False,
+            ).filter(
+                Q(
+                    from_user=virtual_user,
+                    to_user=other_user,
+                ) |
+                Q(
+                    from_user=other_user,
+                    to_user=virtual_user,
+                )
+            )
+        )
+
+        if not debts:
+            return Response(
+                {
+                    'detail':
+                    'Không còn công nợ chưa xử lý giữa hai thành viên này.'
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        settled_total_amount = 0
+
+        for debt in debts:
+            settled_total_amount += money_to_int(debt.amount)
+            debt.is_paid = True
+            debt.save(update_fields=['is_paid'])
+
+        return Response(
+            {
+                'message': 'Đã đánh dấu xử lý ngoài đời.',
+                'settled_debt_count': len(debts),
+                'settled_total_amount': settled_total_amount,
             },
             status=status.HTTP_200_OK,
         )
