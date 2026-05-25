@@ -27,7 +27,7 @@ class ApiService {
           : 'http://127.0.0.1:8000/api';
     }
 
-    return 'http://$apiHost:8000/api';
+    return 'https://chungvi-production.up.railway.app/api';
   }
 
   static final Dio dio = Dio(
