@@ -11,6 +11,8 @@ from households.views import (
     JoinHouseholdView,
     KickHouseholdMemberView,
     LeaveHouseholdView,
+    MyDebtDetailView,
+    MyDebtSummaryView,
 )
 
 urlpatterns = [
@@ -57,6 +59,16 @@ urlpatterns = [
     path(
         '<uuid:household_id>/leave/',
         LeaveHouseholdView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/my-debts/',
+        MyDebtSummaryView.as_view(),
+    ),
+
+    path(
+        '<uuid:household_id>/my-debts/<int:other_user_id>/',
+        MyDebtDetailView.as_view(),
     ),
 
     path(

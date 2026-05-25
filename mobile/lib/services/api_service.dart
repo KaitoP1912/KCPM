@@ -1083,4 +1083,37 @@ class ApiService {
       note: note,
     );
   }
+
+  static Future<Map<String, dynamic>> getHouseholdMyDebtSummary(
+    String householdId,
+  ) async {
+    try {
+      final response = await dio.get(
+        '/households/$householdId/my-debts/',
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải tổng quan công nợ';
+    }
+  }
+
+  static Future<Map<String, dynamic>> getHouseholdMyDebtDetail({
+    required String householdId,
+    required int otherUserId,
+  }) async {
+    try {
+      final response = await dio.get(
+        '/households/$householdId/my-debts/$otherUserId/',
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tải chi tiết công nợ';
+    }
+  }
 }

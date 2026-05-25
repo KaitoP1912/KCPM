@@ -3,6 +3,7 @@ import secrets
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.db import transaction
+from django.db.models import Q
 
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
@@ -54,6 +55,29 @@ def make_virtual_email(household):
         f'{secrets.token_hex(6)}'
         f'{VIRTUAL_MEMBER_EMAIL_DOMAIN}'
     )
+
+def money_to_int(amount):
+    if amount is None:
+        return 0
+
+    return int(amount)
+
+
+def serialize_debt_user(user, request=None):
+    avatar_url = ''
+
+    if getattr(user, 'avatar', None) and request:
+        avatar_url = request.build_absolute_uri(
+            user.avatar.url
+        )
+
+    return {
+        'other_user_id': user.id,
+        'other_name': get_user_display_name(user),
+        'other_email': user.email,
+        'other_avatar': avatar_url,
+        'is_virtual': is_virtual_user(user),
+    }
 
 
 class HouseholdListCreateView(
@@ -775,4 +799,255 @@ class LeaveHouseholdView(APIView):
                 'message': 'Bạn đã rời nhóm.'
             },
             status=status.HTTP_200_OK
+        )
+    
+class MyDebtSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, household_id):
+        household = Household.objects.filter(
+            id=household_id,
+            is_active=True,
+            members__user=request.user,
+        ).first()
+
+        if not household:
+            return Response(
+                {
+                    'detail':
+                    'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        current_user = request.user
+
+        debts = Debt.objects.filter(
+            household=household,
+            is_paid=False,
+        ).filter(
+            Q(from_user=current_user) |
+            Q(to_user=current_user)
+        ).select_related(
+            'from_user',
+            'to_user',
+            'expense',
+        )
+
+        pair_map = {}
+
+        for debt in debts:
+            if debt.from_user_id == current_user.id:
+                other_user = debt.to_user
+                direction = 'i_owe'
+            else:
+                other_user = debt.from_user
+                direction = 'owed_to_me'
+
+            if other_user.id not in pair_map:
+                user_data = serialize_debt_user(
+                    other_user,
+                    request,
+                )
+
+                pair_map[other_user.id] = {
+                    **user_data,
+                    'i_owe_amount': 0,
+                    'owed_to_me_amount': 0,
+                    'expense_ids': set(),
+                }
+
+            amount = money_to_int(debt.amount)
+
+            if direction == 'i_owe':
+                pair_map[other_user.id]['i_owe_amount'] += amount
+            else:
+                pair_map[other_user.id]['owed_to_me_amount'] += amount
+
+            pair_map[other_user.id]['expense_ids'].add(
+                str(debt.expense_id)
+            )
+
+        i_owe = []
+        owed_to_me = []
+
+        total_i_owe = 0
+        total_owed_to_me = 0
+
+        for item in pair_map.values():
+            net_amount = (
+                item['i_owe_amount'] -
+                item['owed_to_me_amount']
+            )
+
+            if net_amount == 0:
+                continue
+
+            response_item = {
+                'other_user_id': item['other_user_id'],
+                'other_name': item['other_name'],
+                'other_email': item['other_email'],
+                'other_avatar': item['other_avatar'],
+                'is_virtual': item['is_virtual'],
+                'amount': abs(net_amount),
+                'expense_count': len(item['expense_ids']),
+            }
+
+            if net_amount > 0:
+                total_i_owe += net_amount
+                i_owe.append(response_item)
+            else:
+                total_owed_to_me += abs(net_amount)
+                owed_to_me.append(response_item)
+
+        i_owe.sort(
+            key=lambda item: item['amount'],
+            reverse=True,
+        )
+
+        owed_to_me.sort(
+            key=lambda item: item['amount'],
+            reverse=True,
+        )
+
+        return Response(
+            {
+                'household_id': str(household.id),
+                'user_id': current_user.id,
+                'total_i_owe': total_i_owe,
+                'total_owed_to_me': total_owed_to_me,
+                'i_owe': i_owe,
+                'owed_to_me': owed_to_me,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MyDebtDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, household_id, other_user_id):
+        household = Household.objects.filter(
+            id=household_id,
+            is_active=True,
+            members__user=request.user,
+        ).first()
+
+        if not household:
+            return Response(
+                {
+                    'detail':
+                    'Không tìm thấy nhóm hoặc bạn không thuộc nhóm này.'
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        other_membership = HouseholdMember.objects.filter(
+            household=household,
+            user_id=other_user_id,
+        ).select_related(
+            'user',
+        ).first()
+
+        if not other_membership:
+            return Response(
+                {
+                    'detail':
+                    'Người này không thuộc nhóm.'
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        current_user = request.user
+        other_user = other_membership.user
+
+        debts = Debt.objects.filter(
+            household=household,
+            is_paid=False,
+        ).filter(
+            Q(
+                from_user=current_user,
+                to_user=other_user,
+            ) |
+            Q(
+                from_user=other_user,
+                to_user=current_user,
+            )
+        ).select_related(
+            'from_user',
+            'to_user',
+            'expense',
+            'expense__payer',
+        ).order_by(
+            '-created_at',
+        )
+
+        total_i_owe = 0
+        total_owed_to_me = 0
+        items = []
+
+        for debt in debts:
+            amount = money_to_int(debt.amount)
+
+            if debt.from_user_id == current_user.id:
+                direction = 'i_owe'
+                total_i_owe += amount
+            else:
+                direction = 'owed_to_me'
+                total_owed_to_me += amount
+
+            items.append(
+                {
+                    'debt_id': str(debt.id),
+                    'expense_id': str(debt.expense_id),
+                    'expense_title': debt.expense.title,
+                    'expense_date': (
+                        debt.expense.expense_date.isoformat()
+                        if debt.expense.expense_date
+                        else ''
+                    ),
+                    'payer_name': get_user_display_name(
+                        debt.expense.payer
+                    ),
+                    'from_user_name': get_user_display_name(
+                        debt.from_user
+                    ),
+                    'to_user_name': get_user_display_name(
+                        debt.to_user
+                    ),
+                    'direction': direction,
+                    'amount': amount,
+                }
+            )
+
+        net_amount = total_i_owe - total_owed_to_me
+
+        if net_amount > 0:
+            net_direction = 'i_owe'
+        elif net_amount < 0:
+            net_direction = 'owed_to_me'
+        else:
+            net_direction = 'settled'
+
+        other_user_data = serialize_debt_user(
+            other_user,
+            request,
+        )
+
+        return Response(
+            {
+                'household_id': str(household.id),
+                'current_user_id': current_user.id,
+                'other_user_id': other_user.id,
+                'other_name': other_user_data['other_name'],
+                'other_email': other_user_data['other_email'],
+                'other_avatar': other_user_data['other_avatar'],
+                'is_virtual': other_user_data['is_virtual'],
+                'net_direction': net_direction,
+                'net_amount': abs(net_amount),
+                'total_i_owe': total_i_owe,
+                'total_owed_to_me': total_owed_to_me,
+                'items': items,
+            },
+            status=status.HTTP_200_OK,
         )
