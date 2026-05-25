@@ -3,7 +3,18 @@ from rest_framework import serializers
 from payments.models import Payment
 
 
+VIRTUAL_MEMBER_EMAIL_DOMAIN = '@virtual.chungvi.local'
+
+
+def is_virtual_user(user):
+    email = (getattr(user, 'email', '') or '').lower()
+    return email.endswith(VIRTUAL_MEMBER_EMAIL_DOMAIN)
+
+
 def get_user_display_name(user):
+    if is_virtual_user(user):
+        return user.full_name or 'Thành viên ảo'
+
     return user.full_name or user.email
 
 

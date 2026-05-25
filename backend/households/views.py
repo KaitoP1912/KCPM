@@ -1,3 +1,5 @@
+import secrets
+
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.db import transaction
@@ -23,12 +25,35 @@ from households.models import (
 
 from households.serializers import (
     ActivitySerializer,
+    CreateVirtualMemberSerializer,
     HouseholdSerializer,
     HouseholdSummarySerializer,
     JoinHouseholdSerializer,
 )
 
 User = get_user_model()
+
+VIRTUAL_MEMBER_EMAIL_DOMAIN = '@virtual.chungvi.local'
+
+
+def is_virtual_user(user):
+    email = (getattr(user, 'email', '') or '').lower()
+    return email.endswith(VIRTUAL_MEMBER_EMAIL_DOMAIN)
+
+
+def get_user_display_name(user):
+    if is_virtual_user(user):
+        return user.full_name or 'Thành viên ảo'
+
+    return user.full_name or user.email
+
+
+def make_virtual_email(household):
+    return (
+        f'virtual+{household.id.hex}+'
+        f'{secrets.token_hex(6)}'
+        f'{VIRTUAL_MEMBER_EMAIL_DOMAIN}'
+    )
 
 
 class HouseholdListCreateView(
@@ -219,6 +244,15 @@ class AddHouseholdMemberView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        if email.endswith(VIRTUAL_MEMBER_EMAIL_DOMAIN):
+            return Response(
+                {
+                    'detail':
+                    'Email này thuộc thành viên ảo, không thể thêm như tài khoản thật.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if role not in [
             HouseholdMember.Role.MEMBER,
             HouseholdMember.Role.OWNER,
@@ -339,6 +373,141 @@ class AddHouseholdMemberView(APIView):
         )
 
 
+class CreateVirtualHouseholdMemberView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request, household_id):
+        serializer = CreateVirtualMemberSerializer(
+            data=request.data
+        )
+        serializer.is_valid(raise_exception=True)
+
+        household = Household.objects.select_for_update().filter(
+            id=household_id,
+            is_active=True,
+        ).first()
+
+        if not household:
+            return Response(
+                {
+                    'detail':
+                    'Không tìm thấy nhóm.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        owner_membership = HouseholdMember.objects.filter(
+            household=household,
+            user=request.user,
+            role=HouseholdMember.Role.OWNER,
+        ).first()
+
+        if not owner_membership:
+            return Response(
+                {
+                    'detail':
+                    'Chỉ chủ nhóm mới được tạo thành viên ảo.'
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        display_name = serializer.validated_data['display_name']
+        note = serializer.validated_data.get('note', '')
+
+        exists_name = HouseholdMember.objects.filter(
+            household=household,
+            user__email__iendswith=VIRTUAL_MEMBER_EMAIL_DOMAIN,
+            user__full_name__iexact=display_name,
+        ).exists()
+
+        if exists_name:
+            return Response(
+                {
+                    'detail':
+                    'Nhóm đã có thành viên ảo cùng tên.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        username = (
+            f'virtual_{household.id.hex[:10]}_'
+            f'{secrets.token_hex(4)}'
+        )
+        email = make_virtual_email(household)
+
+        while User.objects.filter(email=email).exists():
+            email = make_virtual_email(household)
+
+        while User.objects.filter(username=username).exists():
+            username = (
+                f'virtual_{household.id.hex[:10]}_'
+                f'{secrets.token_hex(4)}'
+            )
+
+        virtual_user = User.objects.create(
+            email=email,
+            username=username,
+            full_name=display_name,
+            is_active=False,
+            email_verified=True,
+        )
+        virtual_user.set_unusable_password()
+
+        try:
+            virtual_user.auth_provider = 'virtual'
+        except Exception:
+            pass
+
+        virtual_user.save()
+
+        HouseholdMember.objects.create(
+            household=household,
+            user=virtual_user,
+            role=HouseholdMember.Role.MEMBER,
+        )
+
+        actor_name = get_user_display_name(request.user)
+
+        Activity.objects.create(
+            household=household,
+            actor=request.user,
+            activity_type=Activity.ActivityType.MEMBER_JOINED,
+            title=(
+                f'{actor_name} đã tạo thành viên ảo {display_name}'
+            ),
+            metadata={
+                'action': 'virtual_member_created',
+                'virtual_user_id': str(virtual_user.id),
+                'virtual_user_name': display_name,
+                'note': note,
+            },
+        )
+
+        household.save(
+            update_fields=[
+                'updated_at',
+            ]
+        )
+
+        household.refresh_from_db()
+
+        response_serializer = HouseholdSerializer(
+            household,
+            context={
+                'request': request
+            }
+        )
+
+        return Response(
+            {
+                'message': 'Đã tạo thành viên ảo.',
+                'household': response_serializer.data,
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
 class KickHouseholdMemberView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -433,14 +602,8 @@ class KickHouseholdMemberView(APIView):
 
         kicked_user = target_membership.user
         kicked_email = kicked_user.email
-        kicked_name = (
-            kicked_user.full_name
-            or kicked_user.email
-        )
-        actor_name = (
-            request.user.full_name
-            or request.user.email
-        )
+        kicked_name = get_user_display_name(kicked_user)
+        actor_name = get_user_display_name(request.user)
 
         Activity.objects.create(
             household=household,

@@ -7,10 +7,14 @@ class Debt {
   final String fromUserName;
   final String fromUserEmail;
   final String fromUserAvatar;
+  final bool fromUserIsVirtual;
 
   final String toUserName;
   final String toUserEmail;
   final String toUserAvatar;
+  final bool toUserIsVirtual;
+
+  final bool hasVirtualMember;
 
   final String bankName;
   final String bankAccountNumber;
@@ -33,9 +37,12 @@ class Debt {
     required this.fromUserName,
     required this.fromUserEmail,
     required this.fromUserAvatar,
+    required this.fromUserIsVirtual,
     required this.toUserName,
     required this.toUserEmail,
     required this.toUserAvatar,
+    required this.toUserIsVirtual,
+    required this.hasVirtualMember,
     required this.bankName,
     required this.bankAccountNumber,
     required this.bankAccountHolder,
@@ -59,6 +66,9 @@ class Debt {
     final rawPendingPaymentId =
         json['pending_payment_id']?.toString();
 
+    final fromVirtual = json['from_user_is_virtual'] ?? false;
+    final toVirtual = json['to_user_is_virtual'] ?? false;
+
     return Debt(
       id: json['id'].toString(),
 
@@ -77,6 +87,8 @@ class Debt {
       fromUserAvatar:
           json['from_user_avatar']?.toString() ?? '',
 
+      fromUserIsVirtual: fromVirtual,
+
       toUserName:
           json['to_user_name']?.toString() ?? '',
 
@@ -85,6 +97,11 @@ class Debt {
 
       toUserAvatar:
           json['to_user_avatar']?.toString() ?? '',
+
+      toUserIsVirtual: toVirtual,
+
+      hasVirtualMember:
+          json['has_virtual_member'] ?? fromVirtual || toVirtual,
 
       bankName:
           json['bank_name']?.toString() ?? '',

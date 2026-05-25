@@ -11,13 +11,22 @@ class ApiService {
     defaultValue: '192.168.0.5',
   );
 
+  static const String apiBaseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: '',
+  );
+
   static String get baseUrl {
-    // Flutter Web Production
-    if (kIsWeb) {
-      return 'https://chungvi-production.up.railway.app/api';
+    if (apiBaseUrl.isNotEmpty) {
+      return apiBaseUrl;
     }
 
-    // Android Emulator / Physical Device Local
+    if (kIsWeb) {
+      return kReleaseMode
+          ? 'https://chungvi-production.up.railway.app/api'
+          : 'http://127.0.0.1:8000/api';
+    }
+
     return 'http://$apiHost:8000/api';
   }
 
@@ -1039,5 +1048,39 @@ class ApiService {
     } catch (_) {
       throw 'Không thể tham gia nhóm';
     }
+  }
+
+  static Future<Map<String, dynamic>> createVirtualHouseholdMember(
+    String householdId, {
+    required String displayName,
+    String note = '',
+  }) async {
+    try {
+      final response = await dio.post(
+        '/households/$householdId/members/virtual/',
+        data: {
+          'display_name': displayName,
+          'note': note,
+        },
+      );
+
+      return Map<String, dynamic>.from(response.data);
+    } on DioException catch (e) {
+      throw parseDioException(e);
+    } catch (_) {
+      throw 'Không thể tạo thành viên ảo';
+    }
+  }
+
+  static Future<Map<String, dynamic>> createVirtualMember({
+    required String householdId,
+    required String displayName,
+    String note = '',
+  }) async {
+    return createVirtualHouseholdMember(
+      householdId,
+      displayName: displayName,
+      note: note,
+    );
   }
 }

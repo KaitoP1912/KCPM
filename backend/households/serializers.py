@@ -10,6 +10,20 @@ from households.models import (
 
 User = get_user_model()
 
+VIRTUAL_MEMBER_EMAIL_DOMAIN = '@virtual.chungvi.local'
+
+
+def is_virtual_user(user):
+    email = (getattr(user, 'email', '') or '').lower()
+    return email.endswith(VIRTUAL_MEMBER_EMAIL_DOMAIN)
+
+
+def get_user_display_name(user):
+    if is_virtual_user(user):
+        return user.full_name or 'Thành viên ảo'
+
+    return user.full_name or user.email
+
 
 class HouseholdMemberSerializer(
     serializers.ModelSerializer
@@ -24,6 +38,10 @@ class HouseholdMemberSerializer(
         read_only=True
     )
 
+    user_avatar = serializers.SerializerMethodField()
+
+    is_virtual = serializers.SerializerMethodField()
+
     class Meta:
         model = HouseholdMember
 
@@ -32,9 +50,24 @@ class HouseholdMemberSerializer(
             'user',
             'user_email',
             'user_full_name',
+            'user_avatar',
             'role',
+            'is_virtual',
             'joined_at',
         ]
+
+    def get_user_avatar(self, obj):
+        request = self.context.get('request')
+
+        if obj.user.avatar and request:
+            return request.build_absolute_uri(
+                obj.user.avatar.url
+            )
+
+        return ''
+
+    def get_is_virtual(self, obj):
+        return is_virtual_user(obj.user)
 
 
 class HouseholdSerializer(
@@ -106,6 +139,28 @@ class JoinHouseholdSerializer(
         return value.strip().upper()
 
 
+class CreateVirtualMemberSerializer(serializers.Serializer):
+    display_name = serializers.CharField(
+        max_length=80
+    )
+
+    note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=255
+    )
+
+    def validate_display_name(self, value):
+        value = value.strip()
+
+        if len(value) < 2:
+            raise serializers.ValidationError(
+                'Tên thành viên ảo quá ngắn.'
+            )
+
+        return value
+
+
 class ActivitySerializer(
     serializers.ModelSerializer
 ):
@@ -132,11 +187,9 @@ class ActivitySerializer(
         ]
 
     def get_actor_name(self, obj):
-        return (
-            obj.actor.full_name
-            or obj.actor.email
-        )
-    
+        return get_user_display_name(obj.actor)
+
+
 class HouseholdSummarySerializer(
     serializers.ModelSerializer
 ):

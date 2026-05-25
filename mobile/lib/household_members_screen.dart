@@ -25,6 +25,7 @@ class _HouseholdMembersScreenState
   late dynamic household;
 
   bool isAddingMember = false;
+  bool isAddingVirtualMember = false;
   bool isKickingMember = false;
   String? kickingMemberId;
 
@@ -39,6 +40,14 @@ class _HouseholdMembersScreenState
       return member.id.toString();
     } catch (_) {
       return '';
+    }
+  }
+
+  int getMemberUserId(dynamic member) {
+    try {
+      return member.user as int;
+    } catch (_) {
+      return 0;
     }
   }
 
@@ -78,6 +87,14 @@ class _HouseholdMembersScreenState
     }
   }
 
+  bool getMemberIsVirtual(dynamic member) {
+    try {
+      return member.isVirtual == true;
+    } catch (_) {
+      return getMemberEmail(member).endsWith('@virtual.chungvi.local');
+    }
+  }
+
   bool get isCurrentUserOwner {
     for (final member in household.members) {
       if (getMemberEmail(member) ==
@@ -93,8 +110,9 @@ class _HouseholdMembersScreenState
   bool canKickMember(dynamic member) {
     if (!isCurrentUserOwner) return false;
 
-    if (getMemberEmail(member) ==
-        widget.currentUserEmail.toLowerCase()) {
+    if (!getMemberIsVirtual(member) &&
+        getMemberEmail(member) ==
+            widget.currentUserEmail.toLowerCase()) {
       return false;
     }
 
@@ -108,8 +126,9 @@ class _HouseholdMembersScreenState
   Widget buildAvatar(dynamic member) {
     final avatar = getMemberAvatar(member);
     final name = getMemberName(member);
+    final isVirtual = getMemberIsVirtual(member);
 
-    if (avatar.isNotEmpty) {
+    if (!isVirtual && avatar.isNotEmpty) {
       return CircleAvatar(
         radius: 24,
         backgroundImage: NetworkImage(avatar),
@@ -118,15 +137,23 @@ class _HouseholdMembersScreenState
 
     return CircleAvatar(
       radius: 24,
-      backgroundColor: const Color(0xFF087B63),
-      child: Text(
-        name.isNotEmpty ? name[0].toUpperCase() : '?',
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w900,
-          fontSize: 18,
-        ),
-      ),
+      backgroundColor: isVirtual
+          ? const Color(0xFFE0F2FE)
+          : const Color(0xFF087B63),
+      child: isVirtual
+          ? const Icon(
+              Icons.person_outline_rounded,
+              color: Color(0xFF0284C7),
+              size: 25,
+            )
+          : Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            ),
     );
   }
 
@@ -137,7 +164,7 @@ class _HouseholdMembersScreenState
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Thêm thành viên'),
+          title: const Text('Thêm thành viên dùng app'),
           content: TextField(
             controller: emailController,
             keyboardType: TextInputType.emailAddress,
@@ -186,19 +213,7 @@ class _HouseholdMembersScreenState
 
       if (!mounted) return;
 
-      if (response['household'] != null) {
-        final updatedHousehold = Household.fromJson(
-          Map<String, dynamic>.from(
-            response['household'],
-          ),
-        );
-
-        setState(() {
-          household = updatedHousehold;
-        });
-
-        widget.onHouseholdUpdated(updatedHousehold);
-      }
+      handleUpdatedHousehold(response);
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -222,22 +237,149 @@ class _HouseholdMembersScreenState
     }
   }
 
+  Future<void> showCreateVirtualMemberDialog() async {
+    final nameController = TextEditingController();
+    final noteController = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Tạo thành viên ảo'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Tên thành viên ảo',
+                  hintText: 'Ví dụ: Anh Nam, Bạn của Khánh',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Ghi chú',
+                  hintText: 'Không bắt buộc',
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Thành viên ảo không đăng nhập và không nhận thông báo. Công nợ liên quan sẽ được người dùng thật đánh dấu đã thanh toán ngoài đời.',
+                style: TextStyle(
+                  color: Color(0xFF6B7280),
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+
+                if (name.length < 2) {
+                  return;
+                }
+
+                Navigator.pop(context, {
+                  'display_name': name,
+                  'note': noteController.text.trim(),
+                });
+              },
+              child: const Text('Tạo'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null) return;
+
+    setState(() {
+      isAddingVirtualMember = true;
+    });
+
+    try {
+      final response = await ApiService.createVirtualMember(
+        householdId: household.id,
+        displayName: result['display_name'] ?? '',
+        note: result['note'] ?? '',
+      );
+
+      if (!mounted) return;
+
+      handleUpdatedHousehold(response);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Đã tạo thành viên ảo'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isAddingVirtualMember = false;
+        });
+      }
+    }
+  }
+
+  void handleUpdatedHousehold(Map<String, dynamic> response) {
+    if (response['household'] == null) return;
+
+    final updatedHousehold = Household.fromJson(
+      Map<String, dynamic>.from(
+        response['household'],
+      ),
+    );
+
+    setState(() {
+      household = updatedHousehold;
+    });
+
+    widget.onHouseholdUpdated(updatedHousehold);
+  }
+
   Future<void> confirmKickMember(dynamic member) async {
     if (!canKickMember(member) || isKickingMember) return;
 
     final memberId = getMemberId(member);
     final memberName = getMemberName(member);
     final memberEmail = getMemberEmail(member);
+    final isVirtual = getMemberIsVirtual(member);
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Xóa thành viên?'),
+          title: Text(
+            isVirtual
+                ? 'Xóa thành viên ảo?'
+                : 'Xóa thành viên?',
+          ),
           content: Text(
-            'Bạn có chắc muốn xóa $memberName khỏi nhóm?\n\n'
-            '$memberEmail\n\n'
-            'Nếu thành viên còn công nợ chưa thanh toán, hệ thống sẽ không cho xóa.',
+            isVirtual
+                ? 'Bạn có chắc muốn xóa $memberName khỏi nhóm?\n\nNếu thành viên ảo còn công nợ chưa thanh toán, hệ thống sẽ không cho xóa.'
+                : 'Bạn có chắc muốn xóa $memberName khỏi nhóm?\n\n$memberEmail\n\nNếu thành viên còn công nợ chưa thanh toán, hệ thống sẽ không cho xóa.',
           ),
           actions: [
             TextButton(
@@ -276,21 +418,15 @@ class _HouseholdMembersScreenState
 
       if (!mounted) return;
 
-      final updatedHousehold = Household.fromJson(
-        Map<String, dynamic>.from(
-          response['household'],
-        ),
-      );
-
-      setState(() {
-        household = updatedHousehold;
-      });
-
-      widget.onHouseholdUpdated(updatedHousehold);
+      handleUpdatedHousehold(response);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Đã xóa thành viên khỏi nhóm'),
+        SnackBar(
+          content: Text(
+            isVirtual
+                ? 'Đã xóa thành viên ảo'
+                : 'Đã xóa thành viên khỏi nhóm',
+          ),
         ),
       );
     } catch (e) {
@@ -311,6 +447,27 @@ class _HouseholdMembersScreenState
     }
   }
 
+  Widget buildRoleBadge(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          color: color,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final members = List<dynamic>.from(household.members);
@@ -318,6 +475,8 @@ class _HouseholdMembersScreenState
     members.sort((a, b) {
       final roleA = getMemberRole(a);
       final roleB = getMemberRole(b);
+      final virtualA = getMemberIsVirtual(a);
+      final virtualB = getMemberIsVirtual(b);
 
       if (roleA == 'owner' && roleB != 'owner') {
         return -1;
@@ -327,10 +486,20 @@ class _HouseholdMembersScreenState
         return 1;
       }
 
+      if (!virtualA && virtualB) {
+        return -1;
+      }
+
+      if (virtualA && !virtualB) {
+        return 1;
+      }
+
       return getMemberName(a).compareTo(
         getMemberName(b),
       );
     });
+
+    final isAdding = isAddingMember || isAddingVirtualMember;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6FA),
@@ -340,19 +509,53 @@ class _HouseholdMembersScreenState
         elevation: 0,
         actions: [
           if (isCurrentUserOwner)
-            IconButton(
-              onPressed:
-                  isAddingMember ? null : showAddMemberDialog,
-              icon: isAddingMember
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
+            isAdding
+                ? const Padding(
+                    padding: EdgeInsets.only(right: 16),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                        ),
                       ),
-                    )
-                  : const Icon(Icons.person_add_alt_1_rounded),
-            ),
+                    ),
+                  )
+                : PopupMenuButton<String>(
+                    icon: const Icon(
+                      Icons.person_add_alt_1_rounded,
+                    ),
+                    onSelected: (value) {
+                      if (value == 'real') {
+                        showAddMemberDialog();
+                      }
+
+                      if (value == 'virtual') {
+                        showCreateVirtualMemberDialog();
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'real',
+                        child: ListTile(
+                          leading: Icon(Icons.mail_outline_rounded),
+                          title: Text('Thêm bằng email'),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'virtual',
+                        child: ListTile(
+                          leading: Icon(Icons.person_outline_rounded),
+                          title: Text('Tạo thành viên ảo'),
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ],
+                  ),
         ],
       ),
       body: ListView.separated(
@@ -363,6 +566,7 @@ class _HouseholdMembersScreenState
           final member = members[index];
           final role = getMemberRole(member);
           final memberId = getMemberId(member);
+          final isVirtual = getMemberIsVirtual(member);
           final isCurrentKicking =
               isKickingMember && kickingMemberId == memberId;
 
@@ -374,6 +578,11 @@ class _HouseholdMembersScreenState
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isVirtual
+                    ? const Color(0xFFBAE6FD)
+                    : Colors.transparent,
+              ),
             ),
             child: Row(
               children: [
@@ -396,7 +605,9 @@ class _HouseholdMembersScreenState
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        getMemberEmail(member),
+                        isVirtual
+                            ? 'Thành viên ảo • không dùng app'
+                            : getMemberEmail(member),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -408,25 +619,18 @@ class _HouseholdMembersScreenState
                     ],
                   ),
                 ),
-                if (role == 'owner')
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.16),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      'Owner',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.amber,
-                      ),
-                    ),
+                if (isVirtual)
+                  buildRoleBadge(
+                    'Ảo',
+                    const Color(0xFF0284C7),
                   ),
+                if (role == 'owner') ...[
+                  const SizedBox(width: 8),
+                  buildRoleBadge(
+                    'Owner',
+                    Colors.amber,
+                  ),
+                ],
                 if (canKickMember(member))
                   isCurrentKicking
                       ? const Padding(
@@ -448,12 +652,14 @@ class _HouseholdMembersScreenState
                               confirmKickMember(member);
                             }
                           },
-                          itemBuilder: (context) => const [
+                          itemBuilder: (context) => [
                             PopupMenuItem(
                               value: 'kick',
                               child: Text(
-                                'Xóa khỏi nhóm',
-                                style: TextStyle(
+                                isVirtual
+                                    ? 'Xóa thành viên ảo'
+                                    : 'Xóa khỏi nhóm',
+                                style: const TextStyle(
                                   color: Colors.red,
                                   fontWeight: FontWeight.w700,
                                 ),

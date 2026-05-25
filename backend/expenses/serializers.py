@@ -11,7 +11,18 @@ from notifications.models import Notification
 from notifications.services import create_notification
 
 
+VIRTUAL_MEMBER_EMAIL_DOMAIN = '@virtual.chungvi.local'
+
+
+def is_virtual_user(user):
+    email = (getattr(user, 'email', '') or '').lower()
+    return email.endswith(VIRTUAL_MEMBER_EMAIL_DOMAIN)
+
+
 def get_user_display_name(user):
+    if is_virtual_user(user):
+        return user.full_name or 'Thành viên ảo'
+
     return user.full_name or user.email
 
 
@@ -56,6 +67,7 @@ class ExpenseParticipantSerializer(serializers.ModelSerializer):
         read_only=True
     )
     user_avatar = serializers.SerializerMethodField()
+    is_virtual = serializers.SerializerMethodField()
 
     class Meta:
         model = ExpenseParticipant
@@ -65,6 +77,7 @@ class ExpenseParticipantSerializer(serializers.ModelSerializer):
             'user_name',
             'user_email',
             'user_avatar',
+            'is_virtual',
             'share_amount',
         ]
 
@@ -80,6 +93,9 @@ class ExpenseParticipantSerializer(serializers.ModelSerializer):
             )
 
         return ''
+
+    def get_is_virtual(self, obj):
+        return is_virtual_user(obj.user)
 
 
 class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
@@ -359,7 +375,11 @@ class ExpenseCreateUpdateSerializer(serializers.ModelSerializer):
                 amount=share_amount
             )
 
-            if send_notifications:
+            if (
+                send_notifications and
+                not is_virtual_user(user) and
+                not is_virtual_user(expense.payer)
+            ):
                 create_notification(
                     recipient=user,
                     actor=expense.payer,
@@ -534,10 +554,7 @@ class DebtSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
-    from_user_name = serializers.CharField(
-        source='from_user.full_name',
-        read_only=True
-    )
+    from_user_name = serializers.SerializerMethodField()
 
     from_user_email = serializers.EmailField(
         source='from_user.email',
@@ -546,10 +563,7 @@ class DebtSerializer(serializers.ModelSerializer):
 
     from_user_avatar = serializers.SerializerMethodField()
 
-    to_user_name = serializers.CharField(
-        source='to_user.full_name',
-        read_only=True
-    )
+    to_user_name = serializers.SerializerMethodField()
 
     to_user_email = serializers.EmailField(
         source='to_user.email',
@@ -573,6 +587,10 @@ class DebtSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    from_user_is_virtual = serializers.SerializerMethodField()
+    to_user_is_virtual = serializers.SerializerMethodField()
+    has_virtual_member = serializers.SerializerMethodField()
+
     pending_payment_id = serializers.SerializerMethodField()
     pending_payment_status = serializers.SerializerMethodField()
     can_mark_paid = serializers.SerializerMethodField()
@@ -588,10 +606,13 @@ class DebtSerializer(serializers.ModelSerializer):
             'from_user_name',
             'from_user_email',
             'from_user_avatar',
+            'from_user_is_virtual',
 
             'to_user_name',
             'to_user_email',
             'to_user_avatar',
+            'to_user_is_virtual',
+            'has_virtual_member',
 
             'bank_name',
             'bank_account_number',
@@ -604,6 +625,24 @@ class DebtSerializer(serializers.ModelSerializer):
             'can_mark_paid',
             'can_confirm_payment',
         ]
+
+    def get_from_user_name(self, obj):
+        return get_user_display_name(obj.from_user)
+
+    def get_to_user_name(self, obj):
+        return get_user_display_name(obj.to_user)
+
+    def get_from_user_is_virtual(self, obj):
+        return is_virtual_user(obj.from_user)
+
+    def get_to_user_is_virtual(self, obj):
+        return is_virtual_user(obj.to_user)
+
+    def get_has_virtual_member(self, obj):
+        return (
+            self.get_from_user_is_virtual(obj) or
+            self.get_to_user_is_virtual(obj)
+        )
 
     def get_pending_payment(self, obj):
         return obj.payments.filter(
@@ -632,15 +671,32 @@ class DebtSerializer(serializers.ModelSerializer):
         if not request or obj.is_paid:
             return False
 
-        if obj.from_user_id != request.user.id:
+        if self.get_pending_payment(obj) is not None:
             return False
 
-        return self.get_pending_payment(obj) is None
+        has_virtual = self.get_has_virtual_member(obj)
+
+        if has_virtual:
+            if obj.from_user_id == request.user.id:
+                return True
+
+            if obj.to_user_id == request.user.id:
+                return True
+
+            return is_household_owner(
+                request.user,
+                obj.household
+            )
+
+        return obj.from_user_id == request.user.id
 
     def get_can_confirm_payment(self, obj):
         request = self.context.get('request')
 
         if not request or obj.is_paid:
+            return False
+
+        if self.get_has_virtual_member(obj):
             return False
 
         if obj.to_user_id != request.user.id:

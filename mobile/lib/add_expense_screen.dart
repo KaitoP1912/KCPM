@@ -133,6 +133,14 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     return '';
   }
 
+  bool getMemberIsVirtual(dynamic member) {
+    try {
+      return member.isVirtual == true;
+    } catch (_) {
+      return getMemberEmail(member).endsWith('@virtual.chungvi.local');
+    }
+  }
+
   String getMemberName(dynamic member) {
     try {
       final value = member.fullName;
@@ -481,6 +489,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final isSelected = selectedPayer == member;
     final name = getMemberName(member);
     final email = getMemberEmail(member);
+    final isVirtual = getMemberIsVirtual(member);
     final firstLetter = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return GestureDetector(
@@ -520,14 +529,58 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                email.isNotEmpty ? email : name,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.textDark,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isVirtual ? name : (email.isNotEmpty ? email : name),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      if (isVirtual) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Ảo',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (isVirtual)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 3),
+                      child: Text(
+                        'Không dùng app',
+                        style: TextStyle(
+                          color: AppColors.textLight,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             Icon(
@@ -557,6 +610,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final isSelected = selectedParticipants.contains(member);
     final name = getMemberName(member);
     final email = getMemberEmail(member);
+    final isVirtual = getMemberIsVirtual(member);
     final firstLetter = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return GestureDetector(
@@ -600,14 +654,58 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                email.isNotEmpty ? email : name,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppColors.textDark,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 15,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isVirtual ? name : (email.isNotEmpty ? email : name),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textDark,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      if (isVirtual) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            'Ảo',
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (isVirtual)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 3),
+                      child: Text(
+                        'Không dùng app',
+                        style: TextStyle(
+                          color: AppColors.textLight,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             Icon(

@@ -8,6 +8,7 @@ class HouseholdMember {
   final String userAvatar;
 
   final String role;
+  final bool isVirtual;
 
   HouseholdMember({
     required this.id,
@@ -16,6 +17,7 @@ class HouseholdMember {
     required this.userFullName,
     required this.userAvatar,
     required this.role,
+    required this.isVirtual,
   });
 
   factory HouseholdMember.fromJson(
@@ -37,12 +39,19 @@ class HouseholdMember {
 
       role:
           json['role']?.toString() ?? '',
+
+      isVirtual:
+          json['is_virtual'] ?? false,
     );
   }
 
   String get displayName {
     if (userFullName.trim().isNotEmpty) {
       return userFullName;
+    }
+
+    if (isVirtual) {
+      return 'Thành viên ảo';
     }
 
     return userEmail;

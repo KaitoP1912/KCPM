@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from expenses.models import Debt
+from households.models import HouseholdMember
 from notifications.models import Notification
 from notifications.services import create_notification
 from payments.models import Payment
@@ -20,12 +21,38 @@ from payments.serializers import (
 )
 
 
+VIRTUAL_MEMBER_EMAIL_DOMAIN = '@virtual.chungvi.local'
+
+
+def is_virtual_user(user):
+    email = (getattr(user, 'email', '') or '').lower()
+    return email.endswith(VIRTUAL_MEMBER_EMAIL_DOMAIN)
+
+
 def get_user_display_name(user):
+    if is_virtual_user(user):
+        return user.full_name or 'Thành viên ảo'
+
     return user.full_name or user.email
 
 
 def format_money(amount):
     return f'{amount:,.0f}đ'.replace(',', '.')
+
+
+def is_household_owner(user, household):
+    return HouseholdMember.objects.filter(
+        household=household,
+        user=user,
+        role=HouseholdMember.Role.OWNER,
+    ).exists()
+
+
+def debt_has_virtual_member(debt):
+    return (
+        is_virtual_user(debt.from_user) or
+        is_virtual_user(debt.to_user)
+    )
 
 
 class PaymentPagination(PageNumberPagination):
@@ -57,15 +84,42 @@ class MarkDebtPaidView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        if debt.from_user_id != request.user.id:
-            raise PermissionDenied(
-                'Chỉ người đang nợ mới có thể báo đã thanh toán.'
-            )
-
         if debt.is_paid:
             return Response(
                 {'detail': 'Công nợ này đã được thanh toán.'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if debt_has_virtual_member(debt):
+            can_settle_virtual_debt = (
+                debt.from_user_id == request.user.id or
+                debt.to_user_id == request.user.id or
+                is_household_owner(request.user, debt.household)
+            )
+
+            if not can_settle_virtual_debt:
+                raise PermissionDenied(
+                    'Bạn không có quyền đánh dấu công nợ này đã thanh toán.'
+                )
+
+            debt.is_paid = True
+            debt.save(
+                update_fields=['is_paid', 'updated_at']
+            )
+
+            return Response(
+                {
+                    'message':
+                    'Đã đánh dấu công nợ liên quan thành viên ảo là đã thanh toán ngoài đời.',
+                    'virtual_settlement': True,
+                    'debt_id': str(debt.id),
+                },
+                status=status.HTTP_200_OK
+            )
+
+        if debt.from_user_id != request.user.id:
+            raise PermissionDenied(
+                'Chỉ người đang nợ mới có thể báo đã thanh toán.'
             )
 
         existing_pending_payment = Payment.objects.filter(

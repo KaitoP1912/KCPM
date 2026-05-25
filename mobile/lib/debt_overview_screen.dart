@@ -155,7 +155,9 @@ class _DebtOverviewScreenState
       if (!mounted) return;
 
       showSnackBar(
-        'Đã gửi yêu cầu xác nhận thanh toán.',
+        debt.hasVirtualMember
+            ? 'Đã đánh dấu thanh toán ngoài đời.'
+            : 'Đã gửi yêu cầu xác nhận thanh toán.',
       );
 
       await loadDebts(showLoading: false);
@@ -748,6 +750,10 @@ class _DebtOverviewScreenState
           : 'Đang chờ bạn xác nhận thanh toán';
     }
 
+    if (debt.hasVirtualMember) {
+      return 'Công nợ với thành viên ảo • xác nhận ngoài đời';
+    }
+
     if (debt.expenseTitle.trim().isNotEmpty) {
       return 'Khoản chi: ${debt.expenseTitle}';
     }
@@ -1007,6 +1013,59 @@ class _DebtOverviewScreenState
       );
     }
 
+    if (debt.hasVirtualMember && debt.canMarkPaid) {
+      final label = isOwe && debt.toUserIsVirtual
+          ? 'Đã thanh toán ngoài đời'
+          : (!isOwe && debt.fromUserIsVirtual
+              ? 'Đã nhận ngoài đời'
+              : 'Đánh dấu đã thanh toán ngoài đời');
+
+      return SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          onPressed: isSubmitting
+              ? null
+              : () => markDebtPaid(debt),
+          icon: isSubmitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check_circle_rounded),
+          label: Text(
+            isSubmitting ? 'Đang xử lý...' : label,
+          ),
+        ),
+      );
+    }
+
+    if (debt.hasVirtualMember) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: AppColors.border,
+          ),
+        ),
+        child: const Text(
+          'Công nợ này liên quan thành viên ảo. Người dùng thật trong khoản nợ có thể đánh dấu đã thanh toán ngoài đời.',
+          style: TextStyle(
+            color: AppColors.textLight,
+            fontWeight: FontWeight.w700,
+            height: 1.35,
+          ),
+        ),
+      );
+    }
+
     if (isOwe) {
       return SizedBox(
         width: double.infinity,
@@ -1088,82 +1147,6 @@ class _DebtOverviewScreenState
     required Debt debt,
     required bool isOwe,
   }) {
-    if (isOwe && debt.canMarkPaid) {
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: isSubmittingPayment
-              ? null
-              : () {
-                  Navigator.pop(sheetContext);
-                  markDebtPaid(debt);
-                },
-          icon: const Icon(Icons.check_circle_rounded),
-          label: const Text('Tôi đã thanh toán'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (!isOwe && debt.canConfirmPayment) {
-      return Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: isSubmittingPayment
-                  ? null
-                  : () {
-                      Navigator.pop(sheetContext);
-                      rejectPayment(debt);
-                    },
-              icon: const Icon(Icons.close_rounded),
-              label: const Text('Từ chối'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.redAccent,
-                side: const BorderSide(color: Colors.redAccent),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: isSubmittingPayment
-                  ? null
-                  : () {
-                      Navigator.pop(sheetContext);
-                      confirmPayment(debt);
-                    },
-              icon: const Icon(Icons.done_rounded),
-              label: const Text('Xác nhận'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (debt.hasPendingPayment) {
-      return const SizedBox.shrink();
-    }
-
     return const SizedBox.shrink();
   }
 
@@ -1210,6 +1193,28 @@ class _DebtOverviewScreenState
   }
 
   Widget buildBankInfo(Debt debt) {
+    if (debt.toUserIsVirtual) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: AppColors.border,
+          ),
+        ),
+        child: const Text(
+          'Người nhận là thành viên ảo, hãy thanh toán ngoài đời theo thỏa thuận nhóm.',
+          style: TextStyle(
+            color: AppColors.textLight,
+            fontWeight: FontWeight.w700,
+            height: 1.4,
+          ),
+        ),
+      );
+    }
+
     final hasBankInfo =
         debt.bankName.trim().isNotEmpty ||
             debt.bankAccountNumber.trim().isNotEmpty ||
