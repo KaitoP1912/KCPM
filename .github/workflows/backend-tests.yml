@@ -28,5 +28,8 @@ jobs:
           pip install pytest pytest-django pytest-cov
 
       - name: Run tests
+        working-directory: backend
+        env:
+          DJANGO_SETTINGS_MODULE: core.settings
         run: |
           pytest tests -v
