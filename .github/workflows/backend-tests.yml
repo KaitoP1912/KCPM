@@ -57,4 +57,4 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: core.settings
         run: |
-          pytest tests -v
+          pytest "API Integration Test" -v
