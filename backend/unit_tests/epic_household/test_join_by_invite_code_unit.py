@@ -1,11 +1,18 @@
-import pytest
+import unittest
+
+from households.serializers import JoinHouseholdSerializer
 
 
-@pytest.mark.skip(reason="TODO: implement join by invite code unit tests")
-def test_join_by_invite_code_valid():
-    assert True
+class TestJoinByInviteCodeUnit(unittest.TestCase):
+    """Unit tests for invite code normalization."""
+
+    def test_join_by_invite_code_normalizes(self):
+        serializer = JoinHouseholdSerializer()
+
+        value = serializer.validate_invite_code("  abcd1234 ")
+
+        self.assertEqual(value, "ABCD1234")
 
 
-@pytest.mark.skip(reason="TODO: implement join by invite code unit tests")
-def test_join_by_invite_code_invalid_or_expired():
-    assert True
+if __name__ == "__main__":
+    unittest.main()

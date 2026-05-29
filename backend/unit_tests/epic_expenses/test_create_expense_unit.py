@@ -1,26 +1,82 @@
-import pytest
+import unittest
+from decimal import Decimal
+from types import SimpleNamespace
+
+from rest_framework import serializers
+
+from expenses.models import Expense
+from expenses.serializers import ExpenseCreateUpdateSerializer
 
 
-@pytest.mark.skip(reason="TODO: implement create expense unit tests")
-def test_create_expense_split_equal():
-    assert True
+class TestCreateExpenseUnit(unittest.TestCase):
+    """Unit tests for expense creation validation and split logic."""
+
+    def test_validate_title_rejects_blank(self):
+        serializer = ExpenseCreateUpdateSerializer()
+
+        with self.assertRaises(serializers.ValidationError):
+            serializer.validate_title("   ")
+
+    def test_validate_amount_rejects_non_positive(self):
+        serializer = ExpenseCreateUpdateSerializer()
+
+        with self.assertRaises(serializers.ValidationError):
+            serializer.validate_amount(Decimal("0"))
+
+    def test_build_split_items_equal(self):
+        serializer = ExpenseCreateUpdateSerializer()
+        users_by_id = {
+            1: SimpleNamespace(id=1),
+            2: SimpleNamespace(id=2),
+            3: SimpleNamespace(id=3),
+        }
+
+        participants = [
+            {"user_id": 1},
+            {"user_id": 2},
+            {"user_id": 3},
+        ]
+
+        split_items = serializer._build_split_items(
+            amount=Decimal("100"),
+            split_type=Expense.SplitType.EQUAL,
+            participants=participants,
+            users_by_id=users_by_id,
+        )
+
+        shares = [item[1] for item in split_items]
+        self.assertEqual(shares, [Decimal("34"), Decimal("33"), Decimal("33")])
+
+    def test_build_split_items_manual_requires_share_amount(self):
+        serializer = ExpenseCreateUpdateSerializer()
+        users_by_id = {1: SimpleNamespace(id=1)}
+
+        with self.assertRaises(serializers.ValidationError):
+            serializer._build_split_items(
+                amount=Decimal("100"),
+                split_type=Expense.SplitType.MANUAL,
+                participants=[{"user_id": 1}],
+                users_by_id=users_by_id,
+            )
+
+    def test_build_split_items_manual_total_mismatch(self):
+        serializer = ExpenseCreateUpdateSerializer()
+        users_by_id = {
+            1: SimpleNamespace(id=1),
+            2: SimpleNamespace(id=2),
+        }
+
+        with self.assertRaises(serializers.ValidationError):
+            serializer._build_split_items(
+                amount=Decimal("100"),
+                split_type=Expense.SplitType.MANUAL,
+                participants=[
+                    {"user_id": 1, "share_amount": Decimal("40")},
+                    {"user_id": 2, "share_amount": Decimal("40")},
+                ],
+                users_by_id=users_by_id,
+            )
 
 
-@pytest.mark.skip(reason="TODO: implement create expense unit tests")
-def test_create_expense_split_custom():
-    assert True
-
-
-@pytest.mark.skip(reason="TODO: implement create expense unit tests")
-def test_create_expense_participants_required():
-    assert True
-
-
-@pytest.mark.skip(reason="TODO: implement create expense unit tests")
-def test_create_expense_payer_must_belong_to_household():
-    assert True
-
-
-@pytest.mark.skip(reason="TODO: implement create expense unit tests")
-def test_create_expense_shares_sum_to_amount():
-    assert True
+if __name__ == "__main__":
+    unittest.main()

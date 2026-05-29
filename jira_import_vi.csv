@@ -1,0 +1,37 @@
+Issue Type,Summary,Epic Name,Epic Link
+Epic,"Auth & Account",EPIC-AUTH,
+Epic,"Household Management",EPIC-HOUSEHOLD,
+Epic,"Expenses & Debts",EPIC-EXPENSES,
+Epic,"Notifications",EPIC-NOTIFICATIONS,
+Task,"Register",,EPIC-AUTH
+Task,"Verify registration OTP",,EPIC-AUTH
+Task,"Resend registration OTP",,EPIC-AUTH
+Task,"Login",,EPIC-AUTH
+Task,"Refresh token",,EPIC-AUTH
+Task,"View profile",,EPIC-AUTH
+Task,"Update profile",,EPIC-AUTH
+Task,"Save FCM token",,EPIC-AUTH
+Task,"Change password",,EPIC-AUTH
+Task,"Forgot password (request OTP)",,EPIC-AUTH
+Task,"Reset password",,EPIC-AUTH
+Task,"Google login",,EPIC-AUTH
+Task,"List households",,EPIC-HOUSEHOLD
+Task,"Create household",,EPIC-HOUSEHOLD
+Task,"Join household by invite code",,EPIC-HOUSEHOLD
+Task,"Get household detail",,EPIC-HOUSEHOLD
+Task,"Add member",,EPIC-HOUSEHOLD
+Task,"Kick member",,EPIC-HOUSEHOLD
+Task,"Leave household",,EPIC-HOUSEHOLD
+Task,"List household activities",,EPIC-HOUSEHOLD
+Task,"List all activities",,EPIC-HOUSEHOLD
+Task,"Create expense",,EPIC-EXPENSES
+Task,"Get expense detail",,EPIC-EXPENSES
+Task,"Update expense",,EPIC-EXPENSES
+Task,"Delete expense",,EPIC-EXPENSES
+Task,"List household expenses",,EPIC-EXPENSES
+Task,"List household debts",,EPIC-EXPENSES
+Task,"List notifications",,EPIC-NOTIFICATIONS
+Task,"Get unread count",,EPIC-NOTIFICATIONS
+Task,"Mark one as read",,EPIC-NOTIFICATIONS
+Task,"Mark all as read",,EPIC-NOTIFICATIONS
+Task,"Save FCM token",,EPIC-NOTIFICATIONS

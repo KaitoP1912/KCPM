@@ -1,11 +1,33 @@
-import pytest
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from expenses.serializers import is_household_owner
 
 
-@pytest.mark.skip(reason="TODO: implement delete expense unit tests")
-def test_delete_expense_permission_check():
-    assert True
+class TestDeleteExpenseUnit(unittest.TestCase):
+    """Unit tests for household owner checks."""
+
+    def test_is_household_owner_true(self):
+        user = SimpleNamespace(id=1)
+        household = SimpleNamespace(id=2)
+
+        with patch("expenses.serializers.HouseholdMember") as member_model:
+            member_model.objects.filter.return_value.exists.return_value = True
+            result = is_household_owner(user, household)
+
+        self.assertTrue(result)
+
+    def test_is_household_owner_false(self):
+        user = SimpleNamespace(id=1)
+        household = SimpleNamespace(id=2)
+
+        with patch("expenses.serializers.HouseholdMember") as member_model:
+            member_model.objects.filter.return_value.exists.return_value = False
+            result = is_household_owner(user, household)
+
+        self.assertFalse(result)
 
 
-@pytest.mark.skip(reason="TODO: implement delete expense unit tests")
-def test_delete_expense_cascade_cleanup():
-    assert True
+if __name__ == "__main__":
+    unittest.main()

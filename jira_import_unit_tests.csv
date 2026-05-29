@@ -1,0 +1,26 @@
+Issue Type,Summary,Epic Name,Epic Link
+Task,"Unit Test - Change password",,CHUNGVI-38
+Task,"Unit Test - Forgot/reset password",,CHUNGVI-38
+Task,"Unit Test - Login",,CHUNGVI-38
+Task,"Unit Test - Refresh token",,CHUNGVI-38
+Task,"Unit Test - Register",,CHUNGVI-38
+Task,"Unit Test - Resend registration OTP",,CHUNGVI-38
+Task,"Unit Test - Verify registration OTP",,CHUNGVI-38
+Task,"Unit Test - Create expense",,CHUNGVI-40
+Task,"Unit Test - Delete expense",,CHUNGVI-40
+Task,"Unit Test - Expense detail",,CHUNGVI-40
+Task,"Unit Test - Household debts",,CHUNGVI-40
+Task,"Unit Test - List household expenses",,CHUNGVI-40
+Task,"Unit Test - Update expense",,CHUNGVI-40
+Task,"Unit Test - Activities",,CHUNGVI-39
+Task,"Unit Test - Add member",,CHUNGVI-39
+Task,"Unit Test - Create household",,CHUNGVI-39
+Task,"Unit Test - Join by invite code",,CHUNGVI-39
+Task,"Unit Test - Kick member",,CHUNGVI-39
+Task,"Unit Test - Leave household",,CHUNGVI-39
+Task,"Unit Test - List notifications",,CHUNGVI-41
+Task,"Unit Test - Mark all as read",,CHUNGVI-41
+Task,"Unit Test - Mark one as read",,CHUNGVI-41
+Task,"Unit Test - Notification creation",,CHUNGVI-41
+Task,"Unit Test - Save FCM token",,CHUNGVI-41
+Task,"Unit Test - Unread count",,CHUNGVI-41
